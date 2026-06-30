@@ -65,7 +65,7 @@ export default function GoogleOneTap() {
       size="sm"
       onClick={handleSignIn}
       disabled={loading}
-      className="gap-2 rounded-full border-muted-foreground/30 px-4"
+      className="gap-2 rounded-full text-xs border-muted-foreground/30 px-4"
     >
       <GoogleIcon />
       <span className="hidden sm:inline">Sign in with Google</span>

@@ -47,12 +47,8 @@ export default function UserDropdown({ session }: UserDropdownProps) {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="relative h-9 w-9 rounded-full"
-        >
-          <Avatar className="h-9 w-9">
+        <Button variant="secondary" size="icon" className="relative rounded-full">
+          <Avatar className="h-6 w-6">
             <AvatarImage src={user.image ?? undefined} alt={user.name} />
             <AvatarFallback className="text-xs font-medium">
               {initials}
@@ -75,9 +71,9 @@ export default function UserDropdown({ session }: UserDropdownProps) {
               </AvatarFallback>
             </Avatar>
 
-            <div className="flex flex-col space-y-0.5">
-              <p className="text-sm font-medium leading-none">{user.name}</p>
-              <p className="text-xs leading-none text-muted-foreground">
+            <div className="flex flex-col space-y-1.5">
+              <p className="text-sm text-foreground font-medium leading-none">{user.name}</p>
+              <p className="text-xs leading-none text-muted-foreground/80">
                 {user.email}
               </p>
             </div>

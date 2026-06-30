@@ -96,7 +96,7 @@ export default function ChatMembersSidebar({
       <aside
         className={cn(
           // Mobile: fixed overlay with translate
-          "fixed left-0 top-14 bottom-0 z-50 flex w-[280px] flex-col border-r bg-background transition-transform duration-300 ease-out",
+          "fixed left-0 top-14 bottom-0 z-50 flex w-[280px] flex-col border-r bg-background transition-transform duration-300 ease-out sm:top-16",
           open ? "translate-x-0" : "-translate-x-full",
           // Desktop: static in flex layout, full height, width-based push
           "lg:static lg:z-auto lg:h-full lg:transition-[width] lg:duration-300 lg:ease-out lg:overflow-hidden",

@@ -3,12 +3,12 @@ import { Geist, Geist_Mono, Inter } from "next/font/google";
 import "./globals.css";
 import { cn } from "@/lib/utils";
 import { ThemeProvider } from "next-themes";
-import Navbar from "@/components/navbar";
 import { SidebarProvider } from "@/components/sidebar-context";
 import SidebarLayout from "@/components/SidebarLayout";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import AppAblyProvider from "@/providers/AblyProvider";
 
-const inter = Inter({subsets:['latin'],variable:'--font-sans'});
+const inter = Inter({ subsets: ["latin"], variable: "--font-sans" });
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -47,14 +47,15 @@ export default function RootLayout({
       <body className="min-h-full flex flex-col">
         <SidebarProvider>
           <TooltipProvider>
-            <main className="flex flex-col h-dvh">
-              <Navbar />
-              <SidebarLayout>
-                <ThemeProvider attribute="class" defaultTheme="dark">
-                  {children}
-                </ThemeProvider>
-              </SidebarLayout>
-            </main>
+            <AppAblyProvider>
+              <main className="flex flex-col h-dvh">
+                <SidebarLayout>
+                  <ThemeProvider attribute="class" defaultTheme="dark">
+                    {children}
+                  </ThemeProvider>
+                </SidebarLayout>
+              </main>
+            </AppAblyProvider>
           </TooltipProvider>
         </SidebarProvider>
       </body>

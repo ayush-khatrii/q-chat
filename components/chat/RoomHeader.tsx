@@ -15,13 +15,16 @@ import {
   Globe,
   Info,
   Languages,
+  LogOut,
   Menu,
   MessagesSquare,
   Moon,
   Palette,
+  Plus,
   Settings,
   Share2,
   ShieldCheck,
+  Trash2,
   UserPlus,
   Users,
   type LucideIcon,
@@ -34,20 +37,27 @@ import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { Switch } from "@/components/ui/switch";
 import GoogleOneTap from "@/components/auth/GoogleOneTap";
 import UserDropdown from "@/components/auth/UserDropdown";
+import RoomActionDialog from "@/components/rooms/RoomActionDialog";
+import RoomCreateDialog from "@/components/rooms/RoomCreateDialog";
 import { useSidebar } from "@/components/sidebar-context";
+import { useRooms } from "@/hooks/use-rooms";
 import { authClient } from "@/lib/auth-client";
 import type { ChatRoom, ChatRoomMember, ChatUser } from "@/constants";
+import type { UserRoomMember } from "@/lib/rooms";
 
 type RoomHeaderProps = {
   room: ChatRoom;
   members: ChatRoomMember[];
 };
 
-function getDisplayName(user: ChatUser) {
+type HeaderUser = Pick<ChatUser, "name" | "email" | "image">;
+type HeaderMember = ChatRoomMember | UserRoomMember;
+
+function getDisplayName(user: HeaderUser) {
   return user.name ?? user.email;
 }
 
-function getInitials(user: ChatUser) {
+function getInitials(user: HeaderUser) {
   const source = user.name ?? user.email;
 
   return source
@@ -69,23 +79,75 @@ function formatJoinedAt(value: string) {
 export default function RoomHeader({ room, members }: RoomHeaderProps) {
   const { toggle: toggleChatList } = useSidebar();
   const { data: session } = authClient.useSession();
+  const {
+    rooms,
+    isCreating,
+    error: roomsError,
+    createRoom,
+    removeRoom,
+    hasLoaded,
+  } = useRooms(Boolean(session?.user), session?.user.id);
   const { resolvedTheme, setTheme } = useTheme();
   const [menuOpen, setMenuOpen] = useState(false);
+  const [createRoomOpen, setCreateRoomOpen] = useState(false);
+  const [roomActionOpen, setRoomActionOpen] = useState(false);
   const [copied, setCopied] = useState(false);
   const [mounted, setMounted] = useState(false);
   const [notifications, setNotifications] = useState(true);
+  const [isRemovingRoom, setIsRemovingRoom] = useState(false);
+  const [roomNotice, setRoomNotice] = useState<string | null>(null);
 
-  const admin = members.find((member) => member.userId === room.ownerId);
-  const memberCount = members.length;
+  const currentRoom = rooms[0] ?? null;
+  const hasActiveRoom = Boolean(currentRoom);
+  const isResolvingRoom = Boolean(session?.user) && !hasLoaded && !currentRoom;
+  const membersToRender: HeaderMember[] = currentRoom?.members ?? members;
+  const memberCount = currentRoom?.memberCount ?? members.length;
+  const displayCode =
+    currentRoom?.code ?? (isResolvingRoom ? "QC------" : "No room created");
+  const displayName =
+    currentRoom?.name ??
+    (isResolvingRoom
+      ? room.name
+      : "You are chatting in preview mode. Create a room to save a private code.");
 
   useEffect(() => {
     setMounted(true);
   }, []);
 
   const copyRoom = async () => {
-    await navigator.clipboard.writeText(room.code);
+    if (!currentRoom) {
+      setCreateRoomOpen(true);
+      return;
+    }
+
+    await navigator.clipboard.writeText(currentRoom.code);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
+  };
+
+  const handleCreateRoom = async (name: string, customCode?: string) => {
+    const createdRoom = await createRoom(name, customCode);
+
+    setRoomNotice(`Room ${createdRoom.code} is ready.`);
+  };
+
+  const handleRemoveRoom = async () => {
+    if (!currentRoom) {
+      return;
+    }
+
+    setIsRemovingRoom(true);
+
+    try {
+      const action = await removeRoom(currentRoom.id);
+      setRoomNotice(
+        action === "deleted" ? "Room deleted." : "You left the room.",
+      );
+      setRoomActionOpen(false);
+      setMenuOpen(false);
+    } finally {
+      setIsRemovingRoom(false);
+    }
   };
 
   return (
@@ -109,11 +171,30 @@ export default function RoomHeader({ room, members }: RoomHeaderProps) {
           <div className="min-w-0">
             <div className="flex min-w-0 items-center gap-1.5 sm:gap-2">
               <h1 className="truncate font-mono text-sm font-semibold tracking-normal sm:text-base">
-                {room.code}
+                <span
+                  className={
+                    isResolvingRoom
+                      ? "animate-pulse text-muted-foreground"
+                      : undefined
+                  }
+                >
+                  {displayCode}
+                </span>
               </h1>
+              {session && !hasActiveRoom && hasLoaded ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon-sm"
+                  aria-label="Add room"
+                  onClick={() => setCreateRoomOpen(true)}
+                >
+                  <Plus />
+                </Button>
+              ) : null}
             </div>
             <p className="truncate text-[0.6875rem] text-muted-foreground sm:text-xs">
-              {room.name}
+              {displayName}
             </p>
           </div>
         </div>
@@ -141,10 +222,14 @@ export default function RoomHeader({ room, members }: RoomHeaderProps) {
               </div>
               <div className="min-w-0 flex-1">
                 <p className="truncate font-mono text-sm font-semibold">
-                  {room.code}
+                  {displayCode}
                 </p>
                 <p className="truncate text-xs text-muted-foreground">
-                  {room.name} · {memberCount} members
+                  {isResolvingRoom
+                    ? room.name
+                    : hasActiveRoom
+                    ? `${displayName} · ${memberCount} members`
+                    : "Create a room to save a private QC code"}
                 </p>
               </div>
             </div>
@@ -154,53 +239,82 @@ export default function RoomHeader({ room, members }: RoomHeaderProps) {
                 <div className="rounded-lg border bg-card p-2 text-card-foreground">
                   <div className="flex items-center justify-between gap-3 px-2 py-1.5">
                     <div>
-                      <p className="text-xs font-semibold">Members</p>
+                      <p className="text-xs font-semibold">
+                        {hasActiveRoom ? "Members" : "Room status"}
+                      </p>
                       <p className="text-[0.625rem] text-muted-foreground">
-                        Current room membership
+                        {hasActiveRoom
+                          ? "Current room membership"
+                          : isResolvingRoom
+                          ? room.name
+                          : "The current chat is visible, but no database room has been created yet."}
                       </p>
                     </div>
-                    <Badge variant="secondary">{memberCount} total</Badge>
+                    <Badge variant={hasActiveRoom ? "secondary" : "outline"}>
+                      {hasActiveRoom
+                        ? `${memberCount} total`
+                        : "Preview"}
+                    </Badge>
                   </div>
-                  <div className="mt-1 space-y-1">
-                    {members.map((member) => (
-                      <div
-                        key={member.id}
-                        className="flex items-center gap-2 rounded-md px-2 py-1.5"
-                      >
-                        <Avatar className="size-7">
-                          <AvatarImage
-                            src={member.user.image ?? undefined}
-                            alt={getDisplayName(member.user)}
-                          />
-                          <AvatarFallback className="text-[0.625rem]">
-                            {getInitials(member.user)}
-                          </AvatarFallback>
-                        </Avatar>
-                        <div className="min-w-0 flex-1">
-                          <p className="truncate text-xs font-medium">
-                            {getDisplayName(member.user)}
-                          </p>
-                          <p className="truncate text-[0.625rem] text-muted-foreground">
-                            Joined {formatJoinedAt(member.joinedAt)}
-                          </p>
+                  {hasActiveRoom ? (
+                    <div className="mt-1 space-y-1">
+                      {membersToRender.map((member) => (
+                        <div
+                          key={member.id}
+                          className="flex items-center gap-2 rounded-md px-2 py-1.5"
+                        >
+                          <Avatar className="size-7">
+                            <AvatarImage
+                              src={member.user.image ?? undefined}
+                              alt={getDisplayName(member.user)}
+                            />
+                            <AvatarFallback className="text-[0.625rem]">
+                              {getInitials(member.user)}
+                            </AvatarFallback>
+                          </Avatar>
+                          <div className="min-w-0 flex-1">
+                            <p className="truncate text-xs font-medium">
+                              {getDisplayName(member.user)}
+                            </p>
+                            <p className="truncate text-[0.625rem] text-muted-foreground">
+                              Joined {formatJoinedAt(member.joinedAt)}
+                            </p>
+                          </div>
+                          {member.userId === currentRoom?.ownerId ? (
+                            <Badge variant="default">Admin</Badge>
+                          ) : (
+                            <Badge variant="outline">Member</Badge>
+                          )}
                         </div>
-                        {member.userId === room.ownerId ? (
-                          <Badge variant="default">Admin</Badge>
-                        ) : (
-                          <Badge variant="outline">Member</Badge>
-                        )}
-                      </div>
-                    ))}
-                  </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="mt-2 rounded-md bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+                      Use the Add room button to create a private room code for this chat.
+                    </div>
+                  )}
                 </div>
 
                 <MenuSection icon={Folder} title="Workspace">
-                  <MenuButton
-                    icon={copied ? Check : Copy}
-                    label={copied ? "Copied!" : "Copy room code"}
-                    onClick={copyRoom}
-                  />
-                  <MenuButton icon={Share2} label="Share invite link" />
+                  {hasActiveRoom ? (
+                    <>
+                      <MenuButton
+                        icon={copied ? Check : Copy}
+                        label={copied ? "Copied!" : "Copy room code"}
+                        onClick={copyRoom}
+                      />
+                      <MenuButton icon={Share2} label="Share invite link" />
+                    </>
+                  ) : hasLoaded ? (
+                    <MenuButton
+                      icon={Plus}
+                      label="Add room"
+                      onClick={() => {
+                        setMenuOpen(false);
+                        setCreateRoomOpen(true);
+                      }}
+                    />
+                  ) : null}
                   <MenuButton
                     icon={Users}
                     label="Open chat list"
@@ -209,10 +323,30 @@ export default function RoomHeader({ room, members }: RoomHeaderProps) {
                       setMenuOpen(false);
                     }}
                   />
-                  <MenuButton icon={UserPlus} label="Invite members" />
-                  <MenuButton icon={Settings} label="Room settings" />
-                  <MenuButton icon={ShieldCheck} label="Admin controls" />
+                  {hasActiveRoom ? (
+                    <>
+                      <MenuButton icon={UserPlus} label="Invite members" />
+                      <MenuButton icon={Settings} label="Room settings" />
+                      <MenuButton icon={ShieldCheck} label="Admin controls" />
+                      <MenuButton
+                        icon={currentRoom?.isOwner ? Trash2 : LogOut}
+                        label={currentRoom?.isOwner ? "Delete room" : "Leave room"}
+                        tone="destructive"
+                        onClick={() => setRoomActionOpen(true)}
+                      />
+                    </>
+                  ) : null}
                 </MenuSection>
+
+                {roomsError || roomNotice ? (
+                  <div className="rounded-lg border bg-card px-3 py-2 text-xs">
+                    {roomsError ? (
+                      <p className="text-destructive">{roomsError}</p>
+                    ) : (
+                      <p className="text-muted-foreground">{roomNotice}</p>
+                    )}
+                  </div>
+                ) : null}
 
                 <MenuSection icon={Settings} title="Preferences">
                   <ToggleRow
@@ -266,6 +400,20 @@ export default function RoomHeader({ room, members }: RoomHeaderProps) {
           </SheetContent>
         </Sheet>
       </div>
+
+      <RoomCreateDialog
+        open={createRoomOpen}
+        onOpenChange={setCreateRoomOpen}
+        isCreating={isCreating}
+        onCreate={handleCreateRoom}
+      />
+      <RoomActionDialog
+        room={currentRoom}
+        open={roomActionOpen}
+        isBusy={isRemovingRoom}
+        onOpenChange={setRoomActionOpen}
+        onConfirm={handleRemoveRoom}
+      />
     </section>
   );
 }
@@ -293,16 +441,22 @@ function MenuSection({
 function MenuButton({
   icon: Icon,
   label,
+  tone = "default",
   onClick,
 }: {
   icon: LucideIcon;
   label: string;
+  tone?: "default" | "destructive";
   onClick?: () => void;
 }) {
   return (
     <button
       type="button"
-      className="flex min-h-9 w-full items-center gap-3 px-3 text-left text-xs font-medium hover:bg-accent hover:text-accent-foreground"
+      className={
+        tone === "destructive"
+          ? "flex min-h-9 w-full items-center gap-3 px-3 text-left text-xs font-medium text-destructive hover:bg-destructive/10"
+          : "flex min-h-9 w-full items-center gap-3 px-3 text-left text-xs font-medium hover:bg-accent hover:text-accent-foreground"
+      }
       onClick={onClick}
     >
       <Icon className="size-3.5 text-muted-foreground" />

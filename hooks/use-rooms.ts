@@ -100,6 +100,7 @@ export function useRooms(enabled = true, cacheScope?: string | null) {
   const [rooms, setRooms] = useState<UserRoom[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
+  const [isJoining, setIsJoining] = useState(false);
   const [hasLoaded, setHasLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -251,6 +252,54 @@ export function useRooms(enabled = true, cacheScope?: string | null) {
     }
   }, [cacheKey]);
 
+  const joinRoom = useCallback(async (code: string) => {
+    setIsJoining(true);
+
+    try {
+      const response = await fetch("/api/rooms/join", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        credentials: "include",
+        body: JSON.stringify({ code }),
+      });
+
+      const payload = (await response.json().catch(() => null)) as
+        | CreateRoomResponse
+        | { error?: string }
+        | null;
+
+      if (!response.ok || !isCreateRoomResponse(payload)) {
+        throw new Error(getPayloadError(payload, "Unable to join the room."));
+      }
+
+      setRooms((currentRooms) => {
+        const withoutDuplicate = currentRooms.filter(
+          (room) => room.id !== payload.room.id,
+        );
+        const nextRooms = [payload.room, ...withoutDuplicate];
+
+        writeCachedRooms(cacheKey, nextRooms);
+        return nextRooms;
+      });
+      setHasLoaded(true);
+      setError(null);
+
+      return payload.room;
+    } catch (joinError) {
+      const message =
+        joinError instanceof Error
+          ? joinError.message
+          : "Unable to join the room.";
+
+      setError(message);
+      throw joinError;
+    } finally {
+      setIsJoining(false);
+    }
+  }, [cacheKey]);
+
   useEffect(() => {
     void fetchRooms(false);
   }, [fetchRooms]);
@@ -259,9 +308,11 @@ export function useRooms(enabled = true, cacheScope?: string | null) {
     rooms,
     isLoading,
     isCreating,
+    isJoining,
     hasLoaded,
     error,
     createRoom,
+    joinRoom,
     removeRoom,
     refetch: fetchRooms,
   };

@@ -44,20 +44,23 @@ export default function RootLayout({
       )}
       suppressHydrationWarning
     >
-      <body className="min-h-full flex flex-col">
-        <SidebarProvider>
-          <TooltipProvider>
-            <AppAblyProvider>
-              <main className="flex flex-col h-dvh">
-                <SidebarLayout>
-                  <ThemeProvider attribute="class" defaultTheme="dark">
+      <body
+        className="min-h-full flex flex-col"
+        suppressHydrationWarning
+      >
+        <ThemeProvider attribute="class" defaultTheme="dark">
+          <SidebarProvider>
+            <TooltipProvider>
+              <AppAblyProvider>
+                <main className="flex flex-col h-dvh">
+                  <SidebarLayout>
                     {children}
-                  </ThemeProvider>
-                </SidebarLayout>
-              </main>
-            </AppAblyProvider>
-          </TooltipProvider>
-        </SidebarProvider>
+                  </SidebarLayout>
+                </main>
+              </AppAblyProvider>
+            </TooltipProvider>
+          </SidebarProvider>
+        </ThemeProvider>
       </body>
     </html>
   );

@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import { Button } from "../ui/button";
 import { authClient } from "@/lib/auth-client";
 
@@ -32,24 +31,11 @@ const GoogleIcon = () => (
 
 export default function GoogleOneTap() {
   const [loading, setLoading] = useState(false);
-  const router = useRouter();
 
   const handleSignIn = async () => {
     setLoading(true);
 
     try {
-      const result = await authClient.signIn.social({
-        provider: "google",
-        callbackURL: "/chat",
-      });
-
-      if (result?.data?.url) {
-        router.push(result.data.url);
-      } else {
-        router.refresh();
-      }
-    } catch {
-      // fallback: full-page redirect
       await authClient.signIn.social({
         provider: "google",
         callbackURL: "/chat",

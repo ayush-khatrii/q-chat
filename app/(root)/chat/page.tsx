@@ -1,16 +1,31 @@
-import Chat from "@/components/Chat";
-import RoomHeader from "@/components/chat/RoomHeader";
-import { mockChatRoomResponse } from "@/constants";
+import { headers } from "next/headers";
+import { redirect } from "next/navigation";
+import RoomStart from "@/components/rooms/RoomStart";
+import { auth } from "@/lib/auth";
+import prisma from "@/lib/prisma";
 
-const page = () => {
-  const { room, members, messages } = mockChatRoomResponse;
+export default async function Page() {
+  const session = await auth.api.getSession({
+    headers: await headers(),
+  });
 
-  return (
-    <div className="flex min-h-0 w-full flex-1 flex-col">
-      <RoomHeader room={room} members={members} />
-      <Chat messages={messages} currentUserId={room.ownerId} />
-    </div>
-  );
-};
+  if (!session?.user) {
+    redirect("/");
+  }
 
-export default page;
+  const membership = await prisma.roomMember.findFirst({
+    where: { userId: session.user.id },
+    orderBy: { joinedAt: "desc" },
+    select: {
+      room: {
+        select: { code: true },
+      },
+    },
+  });
+
+  if (membership) {
+    redirect(`/chat/${membership.room.code}`);
+  }
+
+  return <RoomStart userId={session.user.id} />;
+}

@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import type { ReactNode } from "react";
 import { useEffect, useState } from "react";
 import { useTheme } from "next-themes";
@@ -15,6 +16,7 @@ import {
   Globe,
   Info,
   Languages,
+  LogIn,
   LogOut,
   Menu,
   MessagesSquare,
@@ -39,19 +41,18 @@ import GoogleOneTap from "@/components/auth/GoogleOneTap";
 import UserDropdown from "@/components/auth/UserDropdown";
 import RoomActionDialog from "@/components/rooms/RoomActionDialog";
 import RoomCreateDialog from "@/components/rooms/RoomCreateDialog";
+import RoomJoinDialog from "@/components/rooms/RoomJoinDialog";
 import { useSidebar } from "@/components/sidebar-context";
 import { useRooms } from "@/hooks/use-rooms";
 import { authClient } from "@/lib/auth-client";
-import type { ChatRoom, ChatRoomMember, ChatUser } from "@/constants";
-import type { UserRoomMember } from "@/lib/rooms";
+import type { UserRoom, UserRoomMember } from "@/lib/rooms";
 
 type RoomHeaderProps = {
-  room: ChatRoom;
-  members: ChatRoomMember[];
+  room: UserRoom;
+  members: UserRoomMember[];
 };
 
-type HeaderUser = Pick<ChatUser, "name" | "email" | "image">;
-type HeaderMember = ChatRoomMember | UserRoomMember;
+type HeaderUser = Pick<UserRoomMember["user"], "name" | "email" | "image">;
 
 function getDisplayName(user: HeaderUser) {
   return user.name ?? user.email;
@@ -77,19 +78,22 @@ function formatJoinedAt(value: string) {
 }
 
 export default function RoomHeader({ room, members }: RoomHeaderProps) {
+  const router = useRouter();
   const { toggle: toggleChatList } = useSidebar();
   const { data: session } = authClient.useSession();
   const {
-    rooms,
     isCreating,
+    isJoining,
     error: roomsError,
     createRoom,
+    joinRoom,
     removeRoom,
     hasLoaded,
   } = useRooms(Boolean(session?.user), session?.user.id);
   const { resolvedTheme, setTheme } = useTheme();
   const [menuOpen, setMenuOpen] = useState(false);
   const [createRoomOpen, setCreateRoomOpen] = useState(false);
+  const [joinRoomOpen, setJoinRoomOpen] = useState(false);
   const [roomActionOpen, setRoomActionOpen] = useState(false);
   const [copied, setCopied] = useState(false);
   const [mounted, setMounted] = useState(false);
@@ -97,18 +101,13 @@ export default function RoomHeader({ room, members }: RoomHeaderProps) {
   const [isRemovingRoom, setIsRemovingRoom] = useState(false);
   const [roomNotice, setRoomNotice] = useState<string | null>(null);
 
-  const currentRoom = rooms[0] ?? null;
-  const hasActiveRoom = Boolean(currentRoom);
-  const isResolvingRoom = Boolean(session?.user) && !hasLoaded && !currentRoom;
-  const membersToRender: HeaderMember[] = currentRoom?.members ?? members;
-  const memberCount = currentRoom?.memberCount ?? members.length;
-  const displayCode =
-    currentRoom?.code ?? (isResolvingRoom ? "QC------" : "No room created");
-  const displayName =
-    currentRoom?.name ??
-    (isResolvingRoom
-      ? room.name
-      : "You are chatting in preview mode. Create a room to save a private code.");
+  const currentRoom = room;
+  const hasActiveRoom = true;
+  const isResolvingRoom = false;
+  const membersToRender = members;
+  const memberCount = currentRoom.memberCount;
+  const displayCode = currentRoom.code;
+  const displayName = currentRoom.name;
 
   useEffect(() => {
     setMounted(true);
@@ -128,7 +127,13 @@ export default function RoomHeader({ room, members }: RoomHeaderProps) {
   const handleCreateRoom = async (name: string, customCode?: string) => {
     const createdRoom = await createRoom(name, customCode);
 
-    setRoomNotice(`Room ${createdRoom.code} is ready.`);
+    router.push(`/chat/${createdRoom.code}`);
+  };
+
+  const handleJoinRoom = async (code: string) => {
+    const joinedRoom = await joinRoom(code);
+
+    router.push(`/chat/${joinedRoom.code}`);
   };
 
   const handleRemoveRoom = async () => {
@@ -145,6 +150,8 @@ export default function RoomHeader({ room, members }: RoomHeaderProps) {
       );
       setRoomActionOpen(false);
       setMenuOpen(false);
+      router.push("/chat");
+      router.refresh();
     } finally {
       setIsRemovingRoom(false);
     }
@@ -323,6 +330,14 @@ export default function RoomHeader({ room, members }: RoomHeaderProps) {
                       setMenuOpen(false);
                     }}
                   />
+                  <MenuButton
+                    icon={LogIn}
+                    label="Join another room"
+                    onClick={() => {
+                      setMenuOpen(false);
+                      setJoinRoomOpen(true);
+                    }}
+                  />
                   {hasActiveRoom ? (
                     <>
                       <MenuButton icon={UserPlus} label="Invite members" />
@@ -406,6 +421,12 @@ export default function RoomHeader({ room, members }: RoomHeaderProps) {
         onOpenChange={setCreateRoomOpen}
         isCreating={isCreating}
         onCreate={handleCreateRoom}
+      />
+      <RoomJoinDialog
+        open={joinRoomOpen}
+        onOpenChange={setJoinRoomOpen}
+        isJoining={isJoining}
+        onJoin={handleJoinRoom}
       />
       <RoomActionDialog
         room={currentRoom}

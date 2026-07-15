@@ -35,15 +35,22 @@ const GoogleIcon = () => (
 export default function HomePage() {
   const { data: session } = authClient.useSession();
   const [signingIn, setSigningIn] = useState(false);
+  const [signInError, setSignInError] = useState<string | null>(null);
   const isLoggedIn = !!session;
 
   const handleGoogleSignIn = async () => {
     setSigningIn(true);
+    setSignInError(null);
+
     try {
-      await authClient.signIn.social({
+      const result = await authClient.signIn.social({
         provider: "google",
         callbackURL: "/chat",
       });
+
+      if (result.error) {
+        setSignInError(result.error.message ?? "Google sign in failed.");
+      }
     } finally {
       setSigningIn(false);
     }
@@ -96,15 +103,14 @@ export default function HomePage() {
               </Button>
 
               <Button
-                asChild
                 size="lg"
                 variant="outline"
                 className="h-12 px-8 text-base"
+                onClick={handleGoogleSignIn}
+                disabled={signingIn}
               >
-                <Link href="/chat">
-                  JOIN ROOM
-                  <ArrowRight className="ml-2 h-4 w-4" />
-                </Link>
+                JOIN ROOM
+                <ArrowRight className="ml-2 h-4 w-4" />
               </Button>
             </>
           ) : (
@@ -130,6 +136,10 @@ export default function HomePage() {
             </>
           )}
         </div>
+
+        {signInError ? (
+          <p className="mt-3 text-sm text-destructive">{signInError}</p>
+        ) : null}
 
         {isLoggedIn && (
           <p className="mt-4 text-sm text-muted-foreground">

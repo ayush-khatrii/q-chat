@@ -5,6 +5,7 @@ import { oneTap } from "better-auth/plugins";
 
 export const auth = betterAuth({
   baseURL: process.env.BETTER_AUTH_URL,
+  basePath: "/api/auth",
   socialProviders: {
     google: {
       clientId: process.env.GOOGLE_CLIENT_ID as string,
@@ -12,11 +13,7 @@ export const auth = betterAuth({
     },
   },
 
-  plugins: [
-    oneTap({
-      clientId: process.env.GOOGLE_CLIENT_ID as string,
-    }),
-  ],
+  plugins: [oneTap()],
   database: prismaAdapter(prisma, {
     provider: "postgresql",
   }),

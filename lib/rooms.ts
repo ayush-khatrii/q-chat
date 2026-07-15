@@ -52,6 +52,14 @@ export const createRoomSchema = z.object({
   }
 });
 
+export const joinRoomSchema = z.object({
+  code: z
+    .string()
+    .trim()
+    .min(1, "Enter a room code.")
+    .transform((code) => normalizeCustomRoomCode(code) ?? ""),
+});
+
 export type UserRoomMember = {
   id: string;
   userId: string;

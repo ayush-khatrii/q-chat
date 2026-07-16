@@ -207,14 +207,14 @@ export default function Chat({ members }: ChatProps) {
         <p className="px-4 pb-2 text-xs text-destructive">{sendError}</p>
       )}
 
-      <div className="min-h-6 px-4 pb-1">
+      {/* <div className="min-h-6 px-4 pb-1">
         {typingText && (
           <p className="text-sm text-muted-foreground">
             {typingText}
           </p>
         )}
-      </div>
-      <Marker role="status" className="py-3">
+      </div> */}
+      <Marker role="status" className="p-4">
         <MarkerContent className="shimmer">
           {typingText && (
             <p className="text-xs text-muted-foreground">

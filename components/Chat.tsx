@@ -11,6 +11,8 @@ import {
   MessageGroup,
   MessageHeader,
 } from "@/components/ui/message";
+import { Marker, MarkerContent } from "@/components/ui/marker"
+
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { authClient } from "@/lib/auth-client";
@@ -212,7 +214,15 @@ export default function Chat({ members }: ChatProps) {
           </p>
         )}
       </div>
-
+      <Marker role="status" className="py-3">
+        <MarkerContent className="shimmer">
+          {typingText && (
+            <p className="text-xs text-muted-foreground">
+              {typingText}
+            </p>
+          )}
+        </MarkerContent>
+      </Marker>
       <form
         onSubmit={handleSubmit}
         className="sticky bottom-0 border-t px-4 py-3"

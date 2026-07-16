@@ -20,7 +20,7 @@ import {
   type ChatMessageEvent,
   type Message as AblyMessage,
 } from "@ably/chat";
-import { useMessages } from "@ably/chat/react";
+import { useMessages, useTyping } from "@ably/chat/react";
 
 type ChatProps = {
   members: UserRoomMember[];
@@ -49,6 +49,7 @@ function formatTime(value: Date) {
 export default function Chat({ members }: ChatProps) {
   const { data: session } = authClient.useSession();
   const currentUser = session?.user;
+  const { currentTypers, keystroke, stop } = useTyping();
 
   const [messages, setMessages] = useState<AblyMessage[]>([]);
   const [draft, setDraft] = useState("");
@@ -73,6 +74,7 @@ export default function Chat({ members }: ChatProps) {
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+
     const text = draft.trim();
     if (!text) return;
 
@@ -87,14 +89,17 @@ export default function Chat({ members }: ChatProps) {
           image: currentUser?.image ?? "",
         },
       });
-      // No need to manually add it to `messages` — the listener above
-      // will receive the Created event and add it for us.
     } catch (error) {
-      setDraft(text); // put the draft back so the user doesn't lose it
+      setDraft(text);
       setSendError(
         error instanceof Error ? error.message : "Unable to send message.",
       );
+      return;
     }
+
+    void stop().catch((error) => {
+      console.error("Error stopping typing", error);
+    });
   };
 
   // Group consecutive messages from the same sender
@@ -110,6 +115,44 @@ export default function Chat({ members }: ChatProps) {
       }
       return acc;
     }, []);
+
+  // current typing...
+  const typingUsers = Array.from(currentTypers)
+    .filter((typer) => typer.clientId !== currentUser?.id)
+    .map((typer) => {
+      const member = members.find(
+        (item) => item.userId === typer.clientId,
+      )?.user;
+
+      return member?.name ?? member?.email ?? typer.clientId;
+    });
+
+  const typingText =
+    typingUsers.length === 1
+      ? `${typingUsers[0]} is typing...`
+      : typingUsers.length === 2
+        ? `${typingUsers[0]} and ${typingUsers[1]} are typing...`
+        : typingUsers.length > 2
+          ? `${typingUsers[0]} and ${typingUsers.length - 1} others are typing...`
+          : null;
+
+  const handleChange = (
+    e: React.ChangeEvent<HTMLTextAreaElement>,
+  ) => {
+    const newValue = e.target.value;
+
+    setDraft(newValue);
+
+    if (newValue.trim().length > 0) {
+      void keystroke().catch((error) => {
+        console.error("Error starting typing", error);
+      });
+    } else {
+      void stop().catch((error) => {
+        console.error("Error stopping typing", error);
+      });
+    }
+  };
 
   return (
     <div className="mx-auto flex min-h-0 w-full max-w-5xl flex-1 flex-col">
@@ -162,6 +205,14 @@ export default function Chat({ members }: ChatProps) {
         <p className="px-4 pb-2 text-xs text-destructive">{sendError}</p>
       )}
 
+      <div className="min-h-6 px-4 pb-1">
+        {typingText && (
+          <p className="text-sm text-muted-foreground">
+            {typingText}
+          </p>
+        )}
+      </div>
+
       <form
         onSubmit={handleSubmit}
         className="sticky bottom-0 border-t px-4 py-3"
@@ -170,9 +221,14 @@ export default function Chat({ members }: ChatProps) {
           <Textarea
             ref={textareaRef}
             value={draft}
-            onChange={(e) => setDraft(e.target.value)}
+            onChange={handleChange}
+            onBlur={() => {
+              void stop().catch((error) => {
+                console.error("Error stopping typing", error);
+              });
+            }}
             rows={1}
-            placeholder="type something..."
+            placeholder="Type something..."
             className="min-h-11 resize-none rounded-xl"
           />
           <Button type="submit" size="icon-lg" disabled={!draft.trim()}>

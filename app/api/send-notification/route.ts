@@ -53,6 +53,15 @@ export async function POST(req: Request) {
     const result = await getMessaging().sendEachForMulticast({
       tokens: tokens.map((t) => t.token),
       notification: { title, body },
+      data: {
+        title,
+        body,
+        roomCode,
+        type: "room_message",
+      },
+      android: {
+        priority: "high",
+      },
     });
 
     console.log("📨 FCM batch result:", {

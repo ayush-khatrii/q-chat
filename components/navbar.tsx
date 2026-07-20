@@ -43,6 +43,7 @@ import GoogleOneTap from "./auth/GoogleOneTap";
 import UserDropdown from "./auth/UserDropdown";
 import { authClient } from "@/lib/auth-client";
 import { initFcm } from "@/lib/fcm";
+import NotificationInit from "@/components/NotificationInit";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -507,6 +508,7 @@ export default function Navbar() {
 
   return (
     <>
+      {session?.user?.id ? <NotificationInit userId={session.user.id} /> : null}
       <header className="sticky top-0 z-50 w-full border-b border-border/60 bg-background/80 backdrop-blur-xl">
         <div className="mx-auto flex h-12 w-full max-w-5xl items-center justify-between px-2 sm:px-4 lg:px-8">
           {/* ── Logo ── */}

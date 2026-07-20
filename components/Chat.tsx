@@ -16,6 +16,7 @@ import { Marker, MarkerContent } from "@/components/ui/marker"
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { authClient } from "@/lib/auth-client";
+import { initFcm } from "@/lib/fcm";
 import type { UserRoomMember } from "@/lib/rooms";
 import {
   ChatMessageEventType,
@@ -67,6 +68,18 @@ export default function Chat({ roomCode, members }: ChatProps) {
       }
     },
   });
+
+  // 🔔 Register FCM on mount (belt-and-suspenders alongside NotificationInit in layout)
+  useEffect(() => {
+    const userId = currentUser?.id;
+    console.log("🔔 Chat useEffect FCM check:", { userId: !!userId });
+    if (userId) {
+      console.log("🔔 Chat: triggering FCM registration for", userId);
+      initFcm(userId).then((ok) => {
+        console.log("🔔 Chat: FCM registration result:", ok);
+      });
+    }
+  }, [currentUser?.id]);
 
   useEffect(() => {
     const textarea = textareaRef.current;

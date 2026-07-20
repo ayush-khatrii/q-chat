@@ -42,7 +42,7 @@ import { useSidebar } from "@/components/sidebar-context";
 import GoogleOneTap from "./auth/GoogleOneTap";
 import UserDropdown from "./auth/UserDropdown";
 import { authClient } from "@/lib/auth-client";
-import NotificationInit from "./NotificationInit";
+import { initFcm } from "@/lib/fcm";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -83,6 +83,8 @@ interface BuildSectionsParams {
   setTheme: (theme: string) => void;
   resolvedTheme: string | undefined;
   mounted: boolean;
+  notifEnabled: boolean;
+  onToggleNotifications: (enabled: boolean) => void;
 }
 
 // ─── Google Icon ─────────────────────────────────────────────────────────────
@@ -121,6 +123,8 @@ const buildSections = ({
   setTheme,
   resolvedTheme,
   mounted,
+  notifEnabled,
+  onToggleNotifications,
 }: BuildSectionsParams): SidebarSectionConfig[] => [
     {
       id: "workspace",
@@ -173,8 +177,8 @@ const buildSections = ({
           label: "Notifications",
           icon: FaBell,
           toggle: true,
-          toggleValue: true,
-          onToggle: (_v: boolean) => { },
+          toggleValue: notifEnabled,
+          onToggle: onToggleNotifications,
         },
         {
           id: "appearance",
@@ -462,6 +466,7 @@ export default function Navbar() {
   const [copied, setCopied] = useState(false);
   const [sheetOpen, setSheetOpen] = useState(false);
   const [mounted, setMounted] = useState(false);
+  const [notifEnabled, setNotifEnabled] = useState(false);
   const { setTheme, resolvedTheme } = useTheme();
   const roomCode = "QCHAT-ABCD";
 
@@ -475,6 +480,18 @@ export default function Navbar() {
     setTimeout(() => setCopied(false), 2000);
   }
 
+  async function onToggleNotifications(enabled: boolean) {
+    if (enabled && session?.user?.id) {
+      const ok = await initFcm(session.user.id);
+      setNotifEnabled(ok);
+      if (!ok) {
+        alert("Please allow notifications in your browser settings:\n\nClick the lock icon in the address bar → Site settings → Notifications → Allow");
+      }
+    } else {
+      setNotifEnabled(false);
+    }
+  }
+
   const sections = buildSections({
     session,
     copied,
@@ -484,11 +501,12 @@ export default function Navbar() {
     setTheme,
     resolvedTheme,
     mounted,
+    notifEnabled,
+    onToggleNotifications,
   });
 
   return (
     <>
-    <NotificationInit userId={session?.user?.id!} />
       <header className="sticky top-0 z-50 w-full border-b border-border/60 bg-background/80 backdrop-blur-xl">
         <div className="mx-auto flex h-12 w-full max-w-5xl items-center justify-between px-2 sm:px-4 lg:px-8">
           {/* ── Logo ── */}

@@ -10,15 +10,18 @@ const firebaseConfig = {
   appId: process.env.NEXT_PUBLIC_APP_ID!,
 };
 
-export async function initFcm(userId: string) {
-  if (typeof window === "undefined" || !("serviceWorker" in navigator) || !userId) return;
+export async function initFcm(userId: string): Promise<boolean> {
+  if (typeof window === "undefined" || !("serviceWorker" in navigator) || !userId) return false;
 
   const app = getApps().length ? getApps()[0] : initializeApp(firebaseConfig);
   const messaging = getMessaging(app);
   const registration = await navigator.serviceWorker.register("/firebase-messaging-sw.js");
 
   const permission = await Notification.requestPermission();
-  if (permission !== "granted") return;
+  if (permission !== "granted") {
+    console.warn("Notification permission denied or blocked");
+    return false;
+  }
 
   const token = await getToken(messaging, {
     vapidKey: process.env.NEXT_PUBLIC_VAPID_KEY!,
@@ -38,4 +41,6 @@ export async function initFcm(userId: string) {
     // Foreground toast — swap for your own toast/notification component
     console.log("Foreground push:", payload);
   });
+
+  return true;
 }

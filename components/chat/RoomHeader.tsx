@@ -172,7 +172,7 @@ export default function RoomHeader({ room, members }: RoomHeaderProps) {
 
         <div className="flex min-w-0 flex-1 items-center gap-2 sm:gap-3">
           <div className="hidden size-9 shrink-0 items-center justify-center rounded-md bg-primary text-primary-foreground sm:flex">
-            <MessagesSquare className="size-4 sm:size-5" />
+            <MessagesSquare className="size-4 sm:size-5" />sasas
           </div>
 
           <div className="min-w-0">

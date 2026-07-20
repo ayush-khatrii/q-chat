@@ -5,6 +5,7 @@ import { cn } from "@/lib/utils";
 import { ThemeProvider } from "next-themes";
 import { SidebarProvider } from "@/components/sidebar-context";
 import SidebarLayout from "@/components/SidebarLayout";
+import NotificationInit from "@/components/NotificationInit";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import AppAblyProvider from "@/providers/AblyProvider";
 
@@ -52,6 +53,7 @@ export default function RootLayout({
           <SidebarProvider>
             <TooltipProvider>
               <AppAblyProvider>
+                <NotificationInit />
                 <main className="flex flex-col h-dvh">
                   <SidebarLayout>
                     {children}

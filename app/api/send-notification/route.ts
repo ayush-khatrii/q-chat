@@ -50,12 +50,28 @@ export async function POST(req: Request) {
     }
 
     // Send notification to all tokens
-    await getMessaging().sendEachForMulticast({
+    const result = await getMessaging().sendEachForMulticast({
       tokens: tokens.map((t) => t.token),
       notification: { title, body },
     });
 
-    return NextResponse.json({ success: true, sent: tokens.length });
+    console.log("📨 FCM batch result:", {
+      successCount: result.successCount,
+      failureCount: result.failureCount,
+    });
+
+    // Log individual failures for debugging
+    result.responses.forEach((resp, i) => {
+      if (!resp.success) {
+        console.error(`❌ FCM token ${tokens[i].userId} failed:`, resp.error?.code, resp.error?.message);
+      }
+    });
+
+    return NextResponse.json({
+      success: true,
+      sent: result.successCount,
+      failed: result.failureCount,
+    });
   } catch (error) {
     console.error("Send notification error:", error);
     return NextResponse.json(

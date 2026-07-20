@@ -42,6 +42,7 @@ import { useSidebar } from "@/components/sidebar-context";
 import GoogleOneTap from "./auth/GoogleOneTap";
 import UserDropdown from "./auth/UserDropdown";
 import { authClient } from "@/lib/auth-client";
+import NotificationInit from "./NotificationInit";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -121,125 +122,125 @@ const buildSections = ({
   resolvedTheme,
   mounted,
 }: BuildSectionsParams): SidebarSectionConfig[] => [
-  {
-    id: "workspace",
-    label: "Workspace",
-    icon: FaFolder,
-    color: "text-muted-foreground",
-    bg: "bg-muted",
-    items: [
-      {
-        id: "copy-code",
-        label: copied ? "Copied!" : "Copy room code",
-        icon: copied ? FaCheck : FaCopy,
-        iconClass: copied ? "text-primary" : undefined,
-        action: copyRoom,
-      },
-      {
-        id: "share-invite",
-        label: "Share invite link",
-        icon: FaShareAlt,
-        action: () => {},
-      },
-      {
-        id: "members",
-        label: "View members",
-        icon: FaUsers,
-        action: () => {
-          setSheetOpen(false);
-          toggleMembers();
+    {
+      id: "workspace",
+      label: "Workspace",
+      icon: FaFolder,
+      color: "text-muted-foreground",
+      bg: "bg-muted",
+      items: [
+        {
+          id: "copy-code",
+          label: copied ? "Copied!" : "Copy room code",
+          icon: copied ? FaCheck : FaCopy,
+          iconClass: copied ? "text-primary" : undefined,
+          action: copyRoom,
         },
-      },
-    ],
-  },
-  {
-    id: "preferences",
-    label: "Preferences",
-    icon: FaCog,
-    color: "text-muted-foreground",
-    bg: "bg-muted",
-    items: [
-      {
-        id: "theme",
-        label: "Dark mode",
-        icon: FaMoon,
-        toggle: true,
-        toggleValue: mounted ? resolvedTheme === "dark" : true,
-        onToggle: (v: boolean) => setTheme(v ? "dark" : "light"),
-      },
-      {
-        id: "notifications",
-        label: "Notifications",
-        icon: FaBell,
-        toggle: true,
-        toggleValue: true,
-        onToggle: (_v: boolean) => {},
-      },
-      {
-        id: "appearance",
-        label: "Appearance",
-        icon: FaPalette,
-        action: () => {},
-      },
-      {
-        id: "language",
-        label: "Language",
-        icon: FaLanguage,
-        action: () => {},
-      },
-    ],
-  },
-  {
-    id: "about",
-    label: "About",
-    icon: FaInfoCircle,
-    color: "text-muted-foreground",
-    bg: "bg-muted",
-    items: [
-      {
-        id: "about-qchat",
-        label: "About QChat",
-        icon: FaBolt,
-        action: () => {},
-      },
-      {
-        id: "privacy",
-        label: "Privacy policy",
-        icon: FaShieldAlt,
-        href: "/privacy",
-      },
-      {
-        id: "terms",
-        label: "Terms of service",
-        icon: FaFileAlt,
-        href: "/terms",
-      },
-    ],
-  },
-  {
-    id: "developer",
-    label: "Developer",
-    icon: FaCode,
-    color: "text-muted-foreground",
-    bg: "bg-muted",
-    items: [
-      {
-        id: "portfolio",
-        label: "Built by Ayush",
-        icon: FaGlobe,
-        href: "https://ayushkhatri.in",
-        external: true,
-      },
-      {
-        id: "github",
-        label: "View on GitHub",
-        icon: FaGithub,
-        href: "https://github.com/yourusername",
-        external: true,
-      },
-    ],
-  },
-];
+        {
+          id: "share-invite",
+          label: "Share invite link",
+          icon: FaShareAlt,
+          action: () => { },
+        },
+        {
+          id: "members",
+          label: "View members",
+          icon: FaUsers,
+          action: () => {
+            setSheetOpen(false);
+            toggleMembers();
+          },
+        },
+      ],
+    },
+    {
+      id: "preferences",
+      label: "Preferences",
+      icon: FaCog,
+      color: "text-muted-foreground",
+      bg: "bg-muted",
+      items: [
+        {
+          id: "theme",
+          label: "Dark mode",
+          icon: FaMoon,
+          toggle: true,
+          toggleValue: mounted ? resolvedTheme === "dark" : true,
+          onToggle: (v: boolean) => setTheme(v ? "dark" : "light"),
+        },
+        {
+          id: "notifications",
+          label: "Notifications",
+          icon: FaBell,
+          toggle: true,
+          toggleValue: true,
+          onToggle: (_v: boolean) => { },
+        },
+        {
+          id: "appearance",
+          label: "Appearance",
+          icon: FaPalette,
+          action: () => { },
+        },
+        {
+          id: "language",
+          label: "Language",
+          icon: FaLanguage,
+          action: () => { },
+        },
+      ],
+    },
+    {
+      id: "about",
+      label: "About",
+      icon: FaInfoCircle,
+      color: "text-muted-foreground",
+      bg: "bg-muted",
+      items: [
+        {
+          id: "about-qchat",
+          label: "About QChat",
+          icon: FaBolt,
+          action: () => { },
+        },
+        {
+          id: "privacy",
+          label: "Privacy policy",
+          icon: FaShieldAlt,
+          href: "/privacy",
+        },
+        {
+          id: "terms",
+          label: "Terms of service",
+          icon: FaFileAlt,
+          href: "/terms",
+        },
+      ],
+    },
+    {
+      id: "developer",
+      label: "Developer",
+      icon: FaCode,
+      color: "text-muted-foreground",
+      bg: "bg-muted",
+      items: [
+        {
+          id: "portfolio",
+          label: "Built by Ayush",
+          icon: FaGlobe,
+          href: "https://ayushkhatri.in",
+          external: true,
+        },
+        {
+          id: "github",
+          label: "View on GitHub",
+          icon: FaGithub,
+          href: "https://github.com/yourusername",
+          external: true,
+        },
+      ],
+    },
+  ];
 
 // ─── Section Item ─────────────────────────────────────────────────────────────
 function SidebarItem({ item }: { item: SidebarItemConfig }) {
@@ -486,100 +487,103 @@ export default function Navbar() {
   });
 
   return (
-    <header className="sticky top-0 z-50 w-full border-b border-border/60 bg-background/80 backdrop-blur-xl">
-      <div className="mx-auto flex h-12 w-full max-w-5xl items-center justify-between px-2 sm:px-4 lg:px-8">
-        {/* ── Logo ── */}
-        <Link href="/" className="flex items-center gap-2 shrink-0">
-          <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-            <MessageCircle className="h-3.5 w-3.5" />
-          </div>
-          <span className="hidden text-sm font-semibold sm:block tracking-tight">
-            QChat
-          </span>
-        </Link>
+    <>
+    <NotificationInit userId={session?.user?.id!} />
+      <header className="sticky top-0 z-50 w-full border-b border-border/60 bg-background/80 backdrop-blur-xl">
+        <div className="mx-auto flex h-12 w-full max-w-5xl items-center justify-between px-2 sm:px-4 lg:px-8">
+          {/* ── Logo ── */}
+          <Link href="/" className="flex items-center gap-2 shrink-0">
+            <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary text-primary-foreground">
+              <MessageCircle className="h-3.5 w-3.5" />
+            </div>
+            <span className="hidden text-sm font-semibold sm:block tracking-tight">
+              QChat
+            </span>
+          </Link>
 
-        {/* ── Right actions ── */}
-        <div className="flex items-center gap-1">
-          <Button
-            size="icon"
-            variant="ghost"
-            onClick={toggleMembers}
-            className="h-8 w-8"
-            title="Toggle members"
-          >
-            <FaUsers className="h-4 w-4" />
-          </Button>
-
-          {session ? <UserDropdown session={session} /> : <GoogleOneTap />}
-
-          {/* ── Sheet trigger ── */}
-          <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
-            <SheetTrigger asChild>
-              <Button size="icon" variant="ghost" className="h-8 w-8">
-                <Menu className="h-4 w-4" />
-              </Button>
-            </SheetTrigger>
-
-            {/* ── Sheet panel ── */}
-            <SheetContent
-              side="right"
-              className="w-[min(88vw,360px)] p-0 flex flex-col h-full border-l border-border/60 bg-background/98 backdrop-blur-xl"
+          {/* ── Right actions ── */}
+          <div className="flex items-center gap-1">
+            <Button
+              size="icon"
+              variant="ghost"
+              onClick={toggleMembers}
+              className="h-8 w-8"
+              title="Toggle members"
             >
-              {/* Header */}
-              <div className="flex items-center gap-3 px-5 py-4 border-b border-border/60 shrink-0">
-                <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary text-primary-foreground shrink-0">
-                  <MessageCircle className="h-3.5 w-3.5" />
-                </div>
-                <div className="min-w-0">
-                  <p className="text-sm font-semibold leading-tight tracking-tight">
-                    QChat
-                  </p>
-                  <p className="text-[10px] text-muted-foreground leading-tight">
-                    Room-based chat
-                  </p>
-                </div>
+              <FaUsers className="h-4 w-4" />
+            </Button>
 
-                {/* Room badge */}
-                <div className="ml-auto flex items-center gap-1.5 rounded-md bg-accent/50 px-2 py-1 shrink-0">
-                  <div className="h-1.5 w-1.5 rounded-full bg-primary animate-pulse" />
-                  <span className="text-[10px] font-mono font-semibold text-foreground/70">
-                    {roomCode}
-                  </span>
-                </div>
-              </div>
+            {session ? <UserDropdown session={session} /> : <GoogleOneTap />}
 
-              {/* Scrollable body */}
-              <ScrollArea className="flex-1 min-h-0">
-                <div className="px-3 py-3 space-y-0.5">
-                  {sections.map((section) => (
-                    <SidebarSection key={section.id} section={section} />
-                  ))}
+            {/* ── Sheet trigger ── */}
+            <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
+              <SheetTrigger asChild>
+                <Button size="icon" variant="ghost" className="h-8 w-8">
+                  <Menu className="h-4 w-4" />
+                </Button>
+              </SheetTrigger>
 
-                  <div className="py-1">
-                    <Separator className="opacity-50" />
+              {/* ── Sheet panel ── */}
+              <SheetContent
+                side="right"
+                className="w-[min(88vw,360px)] p-0 flex flex-col h-full border-l border-border/60 bg-background/98 backdrop-blur-xl"
+              >
+                {/* Header */}
+                <div className="flex items-center gap-3 px-5 py-4 border-b border-border/60 shrink-0">
+                  <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary text-primary-foreground shrink-0">
+                    <MessageCircle className="h-3.5 w-3.5" />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold leading-tight tracking-tight">
+                      QChat
+                    </p>
+                    <p className="text-[10px] text-muted-foreground leading-tight">
+                      Room-based chat
+                    </p>
                   </div>
 
-                  {/* Account always last */}
-                  <AccountBlock session={session} />
+                  {/* Room badge */}
+                  <div className="ml-auto flex items-center gap-1.5 rounded-md bg-accent/50 px-2 py-1 shrink-0">
+                    <div className="h-1.5 w-1.5 rounded-full bg-primary animate-pulse" />
+                    <span className="text-[10px] font-mono font-semibold text-foreground/70">
+                      {roomCode}
+                    </span>
+                  </div>
                 </div>
-              </ScrollArea>
 
-              {/* Footer */}
-              <div className="shrink-0 border-t border-border/60 px-5 py-3 flex items-center justify-between bg-muted/20">
-                <p className="text-[10px] text-muted-foreground leading-tight">
-                  Fast · Simple · Room Based
-                </p>
-                <Badge
-                  variant="secondary"
-                  className="text-[9px] font-bold px-1.5 py-0.5 h-auto bg-primary/10 text-primary border-none rounded-md"
-                >
-                  v1.0.0
-                </Badge>
-              </div>
-            </SheetContent>
-          </Sheet>
+                {/* Scrollable body */}
+                <ScrollArea className="flex-1 min-h-0">
+                  <div className="px-3 py-3 space-y-0.5">
+                    {sections.map((section) => (
+                      <SidebarSection key={section.id} section={section} />
+                    ))}
+
+                    <div className="py-1">
+                      <Separator className="opacity-50" />
+                    </div>
+
+                    {/* Account always last */}
+                    <AccountBlock session={session} />
+                  </div>
+                </ScrollArea>
+
+                {/* Footer */}
+                <div className="shrink-0 border-t border-border/60 px-5 py-3 flex items-center justify-between bg-muted/20">
+                  <p className="text-[10px] text-muted-foreground leading-tight">
+                    Fast · Simple · Room Based
+                  </p>
+                  <Badge
+                    variant="secondary"
+                    className="text-[9px] font-bold px-1.5 py-0.5 h-auto bg-primary/10 text-primary border-none rounded-md"
+                  >
+                    v1.0.0
+                  </Badge>
+                </div>
+              </SheetContent>
+            </Sheet>
+          </div>
         </div>
-      </div>
-    </header>
+      </header>
+    </>
   );
 }

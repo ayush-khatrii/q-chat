@@ -25,6 +25,7 @@ import {
 import { useMessages, useTyping } from "@ably/chat/react";
 
 type ChatProps = {
+  roomCode: string;
   members: UserRoomMember[];
 };
 
@@ -48,7 +49,7 @@ function formatTime(value: Date) {
   }).format(value);
 }
 
-export default function Chat({ members }: ChatProps) {
+export default function Chat({ roomCode, members }: ChatProps) {
   const { data: session } = authClient.useSession();
   const currentUser = session?.user;
   const { currentTypers, keystroke, stop } = useTyping();
@@ -102,6 +103,20 @@ export default function Chat({ members }: ChatProps) {
     void stop().catch((error) => {
       console.error("Error stopping typing", error);
     });
+
+    // Send push notification to other room members
+    if (currentUser?.id) {
+      fetch("/api/send-notification", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          roomCode,
+          senderId: currentUser.id,
+          title: currentUser.name ?? currentUser.email ?? "Someone",
+          body: text,
+        }),
+      }).catch((err) => console.error("Notification error:", err));
+    }
   };
 
   // Group consecutive messages from the same sender

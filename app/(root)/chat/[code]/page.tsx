@@ -37,7 +37,7 @@ export default async function RoomPage({
     <AblyRoom roomName={`qchat:${room.code}`}>
       <div className="flex min-h-0 w-full flex-1 flex-col">
         <RoomHeader room={room} members={room.members} />
-        <Chat members={room.members} />
+        <Chat roomCode={room.code} members={room.members} />
       </div>
     </AblyRoom>
   );

@@ -119,6 +119,11 @@ export default function Chat({ roomCode, members }: ChatProps) {
 
     // Send push notification to other room members
     if (currentUser?.id) {
+      // 🔔 Ensure FCM is registered before attempting to send
+      console.log("🔔 Chat handleSubmit: ensuring FCM registered");
+      const fcmOk = await initFcm(currentUser.id);
+      console.log("🔔 Chat handleSubmit: FCM init result:", fcmOk);
+
       console.log("🔔 Sending push notification to room:", roomCode);
       fetch("/api/send-notification", {
         method: "POST",

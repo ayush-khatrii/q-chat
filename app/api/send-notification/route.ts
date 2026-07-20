@@ -35,17 +35,26 @@ export async function POST(req: Request) {
       },
     });
 
+    console.log("📨 Notification request", { roomCode, senderId, title, body });
+    console.log("📨 Room lookup result", room?.roomMembers?.length ?? 0);
+
     if (!room || room.roomMembers.length === 0) {
+      console.log("📨 No room members found for this room/code");
       return NextResponse.json({ success: true, sent: 0 });
     }
 
     // Get FCM tokens for all other members
     const memberIds = room.roomMembers.map((m) => m.userId);
+    console.log("📨 Member IDs", memberIds);
+
     const tokens = await prisma.fcmToken.findMany({
       where: { userId: { in: memberIds } },
     });
 
+    console.log("📨 Token count", tokens.length);
+
     if (tokens.length === 0) {
+      console.log("📨 No FCM tokens saved for these room members");
       return NextResponse.json({ success: true, sent: 0 });
     }
 

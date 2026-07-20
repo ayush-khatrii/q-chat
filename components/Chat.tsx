@@ -106,6 +106,7 @@ export default function Chat({ roomCode, members }: ChatProps) {
 
     // Send push notification to other room members
     if (currentUser?.id) {
+      console.log("🔔 Sending push notification to room:", roomCode);
       fetch("/api/send-notification", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -115,7 +116,10 @@ export default function Chat({ roomCode, members }: ChatProps) {
           title: currentUser.name ?? currentUser.email ?? "Someone",
           body: text,
         }),
-      }).catch((err) => console.error("Notification error:", err));
+      })
+        .then((r) => r.json())
+        .then((data) => console.log("🔔 Notification API response:", data))
+        .catch((err) => console.error("❌ Notification fetch error:", err));
     }
   };
 

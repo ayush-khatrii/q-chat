@@ -97,6 +97,8 @@ export default function Chat({ roomCode, members }: ChatProps) {
     setSendError(null);
     setDraft("");
 
+    console.log("📤 Chat: sending message via Ably...", { text: text.slice(0, 30), roomCode });
+
     try {
       await sendMessage({
         text,
@@ -105,7 +107,9 @@ export default function Chat({ roomCode, members }: ChatProps) {
           image: currentUser?.image ?? "",
         },
       });
+      console.log("✅ Chat: Ably sendMessage succeeded");
     } catch (error) {
+      console.error("❌ Chat: Ably sendMessage FAILED:", error);
       setDraft(text);
       setSendError(
         error instanceof Error ? error.message : "Unable to send message.",
@@ -118,8 +122,8 @@ export default function Chat({ roomCode, members }: ChatProps) {
     });
 
     // Send push notification to other room members
+    console.log("📤 Chat: about to send notification, currentUser.id:", currentUser?.id);
     if (currentUser?.id) {
-      // 🔔 Ensure FCM is registered before attempting to send
       console.log("🔔 Chat handleSubmit: ensuring FCM registered");
       const fcmOk = await initFcm(currentUser.id);
       console.log("🔔 Chat handleSubmit: FCM init result:", fcmOk);
@@ -135,9 +139,14 @@ export default function Chat({ roomCode, members }: ChatProps) {
           body: text,
         }),
       })
-        .then((r) => r.json())
+        .then((r) => {
+          console.log("🔔 Notification fetch response status:", r.status);
+          return r.json();
+        })
         .then((data) => console.log("🔔 Notification API response:", data))
         .catch((err) => console.error("❌ Notification fetch error:", err));
+    } else {
+      console.warn("⚠️ Chat: skipping notification — no currentUser.id");
     }
   };
 

@@ -10,6 +10,9 @@ const firebaseConfig = {
   appId: process.env.NEXT_PUBLIC_APP_ID!,
 };
 
+// Track if foreground listener is already registered
+let foregroundListenerSet = false;
+
 export async function initFcm(userId: string): Promise<boolean> {
   if (typeof window === "undefined" || !("serviceWorker" in navigator) || !userId) {
     console.log("❌ FCM: browser not supported or no userId");
@@ -73,16 +76,19 @@ export async function initFcm(userId: string): Promise<boolean> {
       return false;
     }
 
-    onMessage(messaging, (payload) => {
-      console.log("🔔 Foreground push received:", payload);
-      // Show notification even in foreground
-      if (Notification.permission === "granted" && payload.notification) {
-        new Notification(payload.notification.title || "", {
-          body: payload.notification.body,
-          icon: "/logo.png",
-        });
-      }
-    });
+    // Only register foreground listener once (prevents duplicate notifications)
+    if (!foregroundListenerSet) {
+      foregroundListenerSet = true;
+      onMessage(messaging, (payload) => {
+        console.log("🔔 Foreground push received:", payload);
+        if (Notification.permission === "granted" && payload.notification) {
+          new Notification(payload.notification.title || "", {
+            body: payload.notification.body,
+            icon: "/logo.png",
+          });
+        }
+      });
+    }
 
     console.log("✅ FCM: All done!");
     return true;

@@ -15,28 +15,14 @@ try {
 
   const messaging = firebase.messaging();
 
-  self.addEventListener('push', (event) => {
-    const payload = event.data?.json?.() || {};
-    const title = payload?.notification?.title || payload?.title || 'New message';
-    const body = payload?.notification?.body || payload?.body || '';
-
-    console.log('🔔 SW: Push event received:', payload);
-    event.waitUntil(
-      self.registration.showNotification(title, {
-        body,
-        tag: payload?.roomCode || 'qchat',
-        renotify: true,
-      }),
-    );
-  });
-
+  // Only ONE handler: Firebase's onBackgroundMessage handles everything
   messaging.onBackgroundMessage((payload) => {
     console.log('🔔 SW: Background message received:', payload);
     const { title, body } = payload.notification || {};
     if (title) {
       self.registration.showNotification(title, {
         body: body || '',
-        tag: payload?.data?.roomCode || 'qchat',
+        tag: 'qchat-msg',
         renotify: true,
       });
     }

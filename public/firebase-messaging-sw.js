@@ -22,6 +22,8 @@ try {
     if (title) {
       self.registration.showNotification(title, {
         body: body || '',
+        icon: '/logo-1.png',
+        badge: '/logo-1.png',
         tag: 'qchat-msg',
         renotify: true,
       });

@@ -80,13 +80,9 @@ export async function initFcm(userId: string): Promise<boolean> {
     if (!foregroundListenerSet) {
       foregroundListenerSet = true;
       onMessage(messaging, (payload) => {
-        console.log("🔔 Foreground push received:", payload);
-        if (Notification.permission === "granted" && payload.notification) {
-          new Notification(payload.notification.title || "", {
-            body: payload.notification.body,
-            icon: "/logo.png",
-          });
-        }
+        console.log("🔔 Foreground push received (no popup — app is open):", payload);
+        // No new Notification() here — service worker handles background,
+        // and when app is open the user already sees the chat.
       });
     }
 

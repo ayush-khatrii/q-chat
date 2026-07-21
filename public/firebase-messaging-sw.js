@@ -1,6 +1,10 @@
-// QChat SW v2 — data-only, single notification, custom icon
+// QChat SW v3 — notification click handling
 importScripts('https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js');
 importScripts('https://www.gstatic.com/firebasejs/10.8.0/firebase-messaging-compat.js');
+
+// Force new SW to activate immediately (no waiting for tab close)
+self.addEventListener('install', () => self.skipWaiting());
+self.addEventListener('activate', (event) => event.waitUntil(clients.claim()));
 
 try {
   firebase.initializeApp({
@@ -36,33 +40,31 @@ try {
   });
 
   console.log('✅ SW: Background message handler registered');
-
-  // Handle notification click — open the app and navigate to the room
-  self.addEventListener('notificationclick', (event) => {
-    event.notification.close();
-    const url = new URL(
-      event.notification.data?.roomCode
-        ? `/chat/${event.notification.data.roomCode}`
-        : '/',
-      self.location.origin,
-    ).href;
-
-    event.waitUntil(
-      clients
-        .matchAll({ type: 'window', includeUncontrolled: true })
-        .then((windows) => {
-          const existing = windows.find((c) => c.url.includes(self.location.origin) && 'focus' in c);
-          if (existing) {
-            existing.focus();
-            existing.navigate(url);
-          } else {
-            clients.openWindow(url);
-          }
-        }),
-    );
-  });
-
-  console.log('✅ SW: Notification click handler registered');
 } catch (error) {
   console.error("❌ SW: Failed to initialize:", error);
 }
+
+// Handle notification click — independent of Firebase, always registered
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const url = new URL(
+    event.notification.data?.roomCode
+      ? `/chat/${event.notification.data.roomCode}`
+      : '/',
+    self.location.origin,
+  ).href;
+
+  event.waitUntil(
+    clients
+      .matchAll({ type: 'window', includeUncontrolled: true })
+      .then((windows) => {
+        const existing = windows.find((c) => c.url.includes(self.location.origin) && 'focus' in c);
+        if (existing) {
+          existing.focus();
+          existing.navigate(url);
+        } else {
+          clients.openWindow(url);
+        }
+      }),
+  );
+});

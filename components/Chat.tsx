@@ -30,6 +30,23 @@ type ChatProps = {
   members: UserRoomMember[];
 };
 
+
+type ReplyLength = "very-short" | "short" | "medium" | "long" | null;
+
+function getReplyLength(value: string): ReplyLength {
+  const text = value.trim();
+
+  if (!text) return null;
+
+  const wordCount = text.split(/\s+/).length;
+
+  if (wordCount <= 2) return "very-short";
+  if (wordCount <= 6) return "short";
+  if (wordCount <= 15) return "medium";
+
+  return "long";
+}
+
 function getInitials(name: string): string {
   return name
     .split(/\s|@/)
@@ -88,6 +105,7 @@ export default function Chat({ roomCode, members }: ChatProps) {
     textarea.style.height = `${Math.min(textarea.scrollHeight, 160)}px`;
   }, [draft]);
 
+
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
 
@@ -96,8 +114,6 @@ export default function Chat({ roomCode, members }: ChatProps) {
 
     setSendError(null);
     setDraft("");
-
-    console.log("📤 Chat: sending message via Ably...", { text: text.slice(0, 30), roomCode });
 
     try {
       await sendMessage({
@@ -177,9 +193,20 @@ export default function Chat({ roomCode, members }: ChatProps) {
       return member?.name ?? member?.email ?? typer.clientId;
     });
 
+  function getTypingText(name: string, length: ReplyLength) {
+    if (!length) return null;
+    const labels = {
+      "very-short": "a quick reply",
+      short: "a short reply",
+      medium: "a medium reply",
+      long: "a long reply",
+    };
+    return `${name} is writing ${labels[length]}…`;
+  }
+
   const typingText =
     typingUsers.length === 1
-      ? `${typingUsers[0]} is typing...`
+      ? getTypingText(typingUsers[0], getReplyLength(draft))
       : typingUsers.length === 2
         ? `${typingUsers[0]} and ${typingUsers[1]} are typing...`
         : typingUsers.length > 2

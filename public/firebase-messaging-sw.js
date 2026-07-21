@@ -1,3 +1,4 @@
+// QChat SW v2 — data-only, single notification, custom icon
 importScripts('https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js');
 importScripts('https://www.gstatic.com/firebasejs/10.8.0/firebase-messaging-compat.js');
 
@@ -18,10 +19,12 @@ try {
   // Only ONE handler: Firebase's onBackgroundMessage handles everything
   messaging.onBackgroundMessage((payload) => {
     console.log('🔔 SW: Background message received:', payload);
-    const { title, body } = payload.notification || {};
+    // Read from data (we send data-only to avoid double notifications from Firebase auto-display)
+    const title = payload.data?.title || payload.notification?.title;
+    const body = payload.data?.body || payload.notification?.body || '';
     if (title) {
       self.registration.showNotification(title, {
-        body: body || '',
+        body: body,
         icon: '/logo-1.png',
         badge: '/logo-1.png',
         tag: 'qchat-msg',

@@ -58,10 +58,10 @@ export async function POST(req: Request) {
       return NextResponse.json({ success: true, sent: 0 });
     }
 
-    // Send notification to all tokens
+    // Send notification to all tokens — use data-only so SW handles display
+    // (no "notification" field, or Firebase auto-displays + SW = double notification)
     const result = await getMessaging().sendEachForMulticast({
       tokens: tokens.map((t) => t.token),
-      notification: { title, body },
       data: {
         title,
         body,

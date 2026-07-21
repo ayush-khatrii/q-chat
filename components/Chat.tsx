@@ -121,13 +121,10 @@ export default function Chat({ roomCode, members }: ChatProps) {
       console.error("Error stopping typing", error);
     });
 
-    // Send push notification to other room members
+    // Send push notification to other room members (MUST run — don't block on FCM)
     console.log("📤 Chat: about to send notification, currentUser.id:", currentUser?.id);
     if (currentUser?.id) {
-      console.log("🔔 Chat handleSubmit: ensuring FCM registered");
-      const fcmOk = await initFcm(currentUser.id);
-      console.log("🔔 Chat handleSubmit: FCM init result:", fcmOk);
-
+      // Fire notification immediately — do NOT await initFcm (it can hang on SW ready)
       console.log("🔔 Sending push notification to room:", roomCode);
       fetch("/api/send-notification", {
         method: "POST",
@@ -145,6 +142,11 @@ export default function Chat({ roomCode, members }: ChatProps) {
         })
         .then((data) => console.log("🔔 Notification API response:", data))
         .catch((err) => console.error("❌ Notification fetch error:", err));
+
+      // FCM registration as fire-and-forget (don't block notification sending)
+      initFcm(currentUser.id).then((ok) => {
+        console.log("🔔 Chat: FCM registration result:", ok);
+      });
     } else {
       console.warn("⚠️ Chat: skipping notification — no currentUser.id");
     }

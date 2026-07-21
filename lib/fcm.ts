@@ -22,15 +22,22 @@ export async function initFcm(userId: string): Promise<boolean> {
     const app = getApps().length ? getApps()[0] : initializeApp(firebaseConfig);
     const messaging = getMessaging(app);
 
-    console.log("📋 FCM: Waiting for service worker readiness...");
-    await navigator.serviceWorker.ready;
-
     console.log("📋 FCM: Registering service worker...");
     let registration = await navigator.serviceWorker.getRegistration("/firebase-messaging-sw.js");
     if (!registration) {
+      console.log("📋 FCM: No existing SW registration, registering...");
       registration = await navigator.serviceWorker.register("/firebase-messaging-sw.js");
     }
-    console.log("✅ FCM: Service worker registered, scope:", registration.scope);
+
+    // Now wait for it to be ready (with timeout)
+    console.log("📋 FCM: Waiting for service worker readiness...");
+    const swReady = await Promise.race([
+      navigator.serviceWorker.ready,
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error("SW ready timed out after 10s")), 10000),
+      ),
+    ]);
+    console.log("✅ FCM: Service worker ready, scope:", swReady.scope);
 
     console.log("📋 FCM: Requesting notification permission...");
     const permission = await Notification.requestPermission();

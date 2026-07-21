@@ -22,6 +22,7 @@ try {
     // Read from data (we send data-only to avoid double notifications from Firebase auto-display)
     const title = payload.data?.title || payload.notification?.title;
     const body = payload.data?.body || payload.notification?.body || '';
+    const roomCode = payload.data?.roomCode || '';
     if (title) {
       self.registration.showNotification(title, {
         body: body,
@@ -29,11 +30,39 @@ try {
         badge: '/logo-1.png',
         tag: 'qchat-msg',
         renotify: true,
+        data: { roomCode },
       });
     }
   });
 
   console.log('✅ SW: Background message handler registered');
+
+  // Handle notification click — open the app and navigate to the room
+  self.addEventListener('notificationclick', (event) => {
+    event.notification.close();
+    const url = new URL(
+      event.notification.data?.roomCode
+        ? `/chat/${event.notification.data.roomCode}`
+        : '/',
+      self.location.origin,
+    ).href;
+
+    event.waitUntil(
+      clients
+        .matchAll({ type: 'window', includeUncontrolled: true })
+        .then((windows) => {
+          const existing = windows.find((c) => c.url.includes(self.location.origin) && 'focus' in c);
+          if (existing) {
+            existing.focus();
+            existing.navigate(url);
+          } else {
+            clients.openWindow(url);
+          }
+        }),
+    );
+  });
+
+  console.log('✅ SW: Notification click handler registered');
 } catch (error) {
   console.error("❌ SW: Failed to initialize:", error);
 }

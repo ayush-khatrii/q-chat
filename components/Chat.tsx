@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { Send } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Bubble, BubbleContent } from "@/components/ui/bubble";
@@ -75,10 +75,16 @@ export default function Chat({ roomCode, members }: ChatProps) {
   const [messages, setMessages] = useState<AblyMessage[]>([]);
   const [draft, setDraft] = useState("");
   const [sendError, setSendError] = useState<string | null>(null);
+  const [hasMore, setHasMore] = useState(false);
+  const [loadingHistory, setLoadingHistory] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const sentinelRef = useRef<HTMLDivElement | null>(null);
+  // Stores the Ably PaginatedResult — acts as our built-in cursor/cache
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const historyPageRef = useRef<any>(null);
 
   // This is the entire "receive messages" setup — straight from Ably's docs.
-  const { sendMessage } = useMessages({
+  const { sendMessage, historyBeforeSubscribe } = useMessages({
     listener: (event: ChatMessageEvent) => {
       if (event.type === ChatMessageEventType.Created) {
         setMessages((prev) => [...prev, event.message]);
@@ -86,7 +92,39 @@ export default function Chat({ roomCode, members }: ChatProps) {
     },
   });
 
-  // 🔔 Register FCM on mount (belt-and-suspenders alongside NotificationInit in layout)
+  // 📜 Load message history when the component mounts
+  useEffect(() => {
+    if (!historyBeforeSubscribe) return;
+
+    setLoadingHistory(true);
+    historyBeforeSubscribe({ limit: 20 })
+      .then((page) => {
+        setMessages(page.items);
+        setHasMore(!page.isLast());
+        historyPageRef.current = page;
+      })
+      .catch((err) => console.error("Error loading history:", err))
+      .finally(() => setLoadingHistory(false));
+  }, [historyBeforeSubscribe]);
+
+  // 📜 Load older messages (pagination)
+  const loadMore = useCallback(async () => {
+    if (!historyPageRef.current || !hasMore || loadingHistory) return;
+    setLoadingHistory(true);
+    try {
+      const nextPage = await historyPageRef.current.next();
+      if (!nextPage) return;
+      setMessages((prev) => [...nextPage.items, ...prev]);
+      setHasMore(!nextPage.isLast());
+      historyPageRef.current = nextPage;
+    } catch (err) {
+      console.error("Error loading more history:", err);
+    } finally {
+      setLoadingHistory(false);
+    }
+  }, [hasMore, loadingHistory]);
+
+  // �🔔 Register FCM on mount (belt-and-suspenders alongside NotificationInit in layout)
   useEffect(() => {
     const userId = currentUser?.id;
     console.log("🔔 Chat useEffect FCM check:", { userId: !!userId });
@@ -97,6 +135,24 @@ export default function Chat({ roomCode, members }: ChatProps) {
       });
     }
   }, [currentUser?.id]);
+
+  // 👁️ Infinite scroll: observe sentinel to load older messages
+  useEffect(() => {
+    const el = sentinelRef.current;
+    if (!el) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting) {
+          loadMore();
+        }
+      },
+      { threshold: 0.1 },
+    );
+
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [loadMore]);
 
   useEffect(() => {
     const textarea = textareaRef.current;
@@ -233,7 +289,14 @@ export default function Chat({ roomCode, members }: ChatProps) {
 
   return (
     <div className="mx-auto flex min-h-0 w-full max-w-5xl flex-1 flex-col">
-      <div className="flex flex-1 flex-col gap-3 px-4 py-4">
+      <div className="flex flex-1 flex-col gap-3 overflow-y-auto px-4 py-4">
+        {/* Sentinel: when this scrolls into view, load older messages */}
+        <div ref={sentinelRef} className="h-1" />
+        {loadingHistory && (
+          <p className="text-center text-xs text-muted-foreground py-2">
+            Loading older messages…
+          </p>
+        )}
         {groups.map((group) => {
           const senderId = group[0].clientId;
           const sender = members.find((m) => m.userId === senderId)?.user;

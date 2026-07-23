@@ -27,7 +27,7 @@ export async function GET() {
     const tokenRequestData = await client.auth.createTokenRequest({
       clientId: session.user.id,
       capability: JSON.stringify({
-        "qchat:*": ["publish", "subscribe", "history"],
+        "qchat:*": ["*"],
       }),
     });
 

@@ -4,6 +4,7 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { Send } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Bubble, BubbleContent } from "@/components/ui/bubble";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   Message,
   MessageContent,
@@ -289,57 +290,59 @@ export default function Chat({ roomCode, members }: ChatProps) {
 
   return (
     <div className="mx-auto flex min-h-0 w-full max-w-5xl flex-1 flex-col">
-      <div className="flex flex-1 flex-col gap-3 overflow-y-auto px-4 py-4">
-        {/* Sentinel: when this scrolls into view, load older messages */}
-        <div ref={sentinelRef} className="h-1" />
-        {loadingHistory && (
-          <p className="text-center text-xs text-muted-foreground py-2">
-            Loading older messages…
-          </p>
-        )}
-        {groups.map((group) => {
-          const senderId = group[0].clientId;
-          const sender = members.find((m) => m.userId === senderId)?.user;
-          const isMe = senderId === currentUser?.id;
-          const senderName = sender?.name ?? sender?.email ?? senderId;
-          const senderImage = isMe ? currentUser?.image : sender?.image;
+      <ScrollArea className="min-h-0 flex-1">
+        <div className="flex flex-col gap-3 px-4 py-4">
+          {/* Sentinel: when this scrolls into view, load older messages */}
+          <div ref={sentinelRef} className="h-1" />
+          {loadingHistory && (
+            <p className="text-center text-xs text-muted-foreground py-2">
+              Loading older messages…
+            </p>
+          )}
+          {groups.map((group) => {
+            const senderId = group[0].clientId;
+            const sender = members.find((m) => m.userId === senderId)?.user;
+            const isMe = senderId === currentUser?.id;
+            const senderName = sender?.name ?? sender?.email ?? senderId;
+            const senderImage = isMe ? currentUser?.image : sender?.image;
 
-          return (
-            <MessageGroup key={group[0].serial}>
-              {group.map((msg, idx) => (
-                <Message key={msg.serial} align={isMe ? "end" : "start"}>
-                  <MessageContent>
-                    {idx === 0 && (
-                      <MessageHeader>
-                        <Avatar className="size-6 mr-2">
-                          <AvatarImage src={senderImage ?? undefined} alt={senderName} />
-                          <AvatarFallback>
-                            {getInitials(senderName)}
-                          </AvatarFallback>
-                        </Avatar>
-                        <span>{senderName}</span>
-                      </MessageHeader>
-                    )}
-                    <Bubble
-                      variant={isMe ? "tinted" : "muted"}
-                      align={isMe ? "end" : "start"}
-                    >
-                      <BubbleContent className="whitespace-pre-wrap">
-                        {msg.text}
-                      </BubbleContent>
-                    </Bubble>
-                    <MessageFooter>
-                      <time dateTime={msg.timestamp.toISOString()}>
-                        {formatTime(msg.timestamp)}
-                      </time>
-                    </MessageFooter>
-                  </MessageContent>
-                </Message>
-              ))}
-            </MessageGroup>
-          );
-        })}
-      </div>
+            return (
+              <MessageGroup key={group[0].serial}>
+                {group.map((msg, idx) => (
+                  <Message key={msg.serial} align={isMe ? "end" : "start"}>
+                    <MessageContent>
+                      {idx === 0 && (
+                        <MessageHeader>
+                          <Avatar className="size-6 mr-2">
+                            <AvatarImage src={senderImage ?? undefined} alt={senderName} />
+                            <AvatarFallback>
+                              {getInitials(senderName)}
+                            </AvatarFallback>
+                          </Avatar>
+                          <span>{senderName}</span>
+                        </MessageHeader>
+                      )}
+                      <Bubble
+                        variant={isMe ? "tinted" : "muted"}
+                        align={isMe ? "end" : "start"}
+                      >
+                        <BubbleContent className="whitespace-pre-wrap">
+                          {msg.text}
+                        </BubbleContent>
+                      </Bubble>
+                      <MessageFooter>
+                        <time dateTime={msg.timestamp.toISOString()}>
+                          {formatTime(msg.timestamp)}
+                        </time>
+                      </MessageFooter>
+                    </MessageContent>
+                  </Message>
+                ))}
+              </MessageGroup>
+            );
+          })}
+        </div>
+      </ScrollArea>
 
       {sendError && (
         <p className="px-4 pb-2 text-xs text-destructive">{sendError}</p>

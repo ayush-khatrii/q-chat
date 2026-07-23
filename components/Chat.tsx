@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback } from "react";
-import { Send } from "lucide-react";
+import { Send, Copy, Pencil, Trash2 } from "lucide-react";
+import { toast } from "sonner";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Bubble, BubbleContent } from "@/components/ui/bubble";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -13,6 +14,13 @@ import {
   MessageHeader,
 } from "@/components/ui/message";
 import { Marker, MarkerContent } from "@/components/ui/marker"
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuSeparator,
+  ContextMenuTrigger,
+} from "@/components/ui/context-menu"
 
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -21,6 +29,7 @@ import { initFcm } from "@/lib/fcm";
 import type { UserRoomMember } from "@/lib/rooms";
 import {
   ChatMessageEventType,
+  ChatMessageAction,
   type ChatMessageEvent,
   type Message as AblyMessage,
 } from "@ably/chat";
@@ -85,10 +94,17 @@ export default function Chat({ roomCode, members }: ChatProps) {
   const historyPageRef = useRef<any>(null);
 
   // This is the entire "receive messages" setup — straight from Ably's docs.
-  const { sendMessage, historyBeforeSubscribe } = useMessages({
+  const { sendMessage, historyBeforeSubscribe, deleteMessage } = useMessages({
     listener: (event: ChatMessageEvent) => {
       if (event.type === ChatMessageEventType.Created) {
         setMessages((prev) => [...prev, event.message]);
+      }
+      if (event.type === ChatMessageEventType.Deleted) {
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.serial === event.message.serial ? event.message : m,
+          ),
+        );
       }
     },
   });
@@ -161,6 +177,37 @@ export default function Chat({ roomCode, members }: ChatProps) {
     textarea.style.height = "auto";
     textarea.style.height = `${Math.min(textarea.scrollHeight, 160)}px`;
   }, [draft]);
+
+  // ── Delete message helper ──
+  const handleDeleteMessage = useCallback(
+    async (msg: AblyMessage) => {
+      try {
+        await deleteMessage(msg.serial, { description: "Deleted by user" });
+        toast.success("Message deleted");
+      } catch (error) {
+        toast.error("Failed to delete message");
+        console.error("Delete error:", error);
+      }
+    },
+    [deleteMessage],
+  );
+
+  // ── Edit message helper ──
+  const handleEditMessage = useCallback((msg: AblyMessage) => {
+    // Set the draft to the message text so user can edit and re-send
+    // For now, just show a toast — you can extend this later
+    toast.info("Edit feature coming soon!");
+  }, []);
+
+  // ── Copy message helper ──
+  const handleCopyMessage = useCallback(async (msg: AblyMessage) => {
+    try {
+      await navigator.clipboard.writeText(msg.text);
+      toast.success("Copied to clipboard");
+    } catch {
+      toast.error("Failed to copy");
+    }
+  }, []);
 
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -308,36 +355,83 @@ export default function Chat({ roomCode, members }: ChatProps) {
 
             return (
               <MessageGroup key={group[0].serial}>
-                {group.map((msg, idx) => (
-                  <Message key={msg.serial} align={isMe ? "end" : "start"}>
-                    <MessageContent>
-                      {idx === 0 && (
-                        <MessageHeader>
-                          <Avatar className="size-6 mr-2">
-                            <AvatarImage src={senderImage ?? undefined} alt={senderName} />
-                            <AvatarFallback>
-                              {getInitials(senderName)}
-                            </AvatarFallback>
-                          </Avatar>
-                          <span>{senderName}</span>
-                        </MessageHeader>
-                      )}
-                      <Bubble
-                        variant={isMe ? "tinted" : "muted"}
-                        align={isMe ? "end" : "start"}
-                      >
-                        <BubbleContent className="whitespace-pre-wrap">
-                          {msg.text}
-                        </BubbleContent>
-                      </Bubble>
-                      <MessageFooter>
+                {group.map((msg, idx) => {
+                  const isDeleted = msg.action === ChatMessageAction.MessageDelete;
+
+                  return (
+                    <Message key={msg.serial} align={isMe ? "end" : "start"}>
+                      <MessageContent>
+                        {idx === 0 && (
+                          <MessageHeader>
+                            <Avatar className="size-6 mr-2">
+                              <AvatarImage src={senderImage ?? undefined} alt={senderName} />
+                              <AvatarFallback>
+                                {getInitials(senderName)}
+                              </AvatarFallback>
+                            </Avatar>
+                            <span>{senderName}</span>
+                          </MessageHeader>
+                        )}
+                        {isDeleted ? (
+                          <Bubble
+                            variant={isMe ? "tinted" : "muted"}
+                            align={isMe ? "end" : "start"}
+                          >
+                            <BubbleContent className="italic text-muted-foreground/50 select-none text-xs">
+                              message deleted by {senderName}
+                            </BubbleContent>
+                          </Bubble>
+                        ) : !isMe ? (
+                          <Bubble variant="muted" align="start">
+                            <BubbleContent className="whitespace-pre-wrap">
+                              {msg.text}
+                            </BubbleContent>
+                          </Bubble>
+                        ) : (
+                          <ContextMenu>
+                            <ContextMenuTrigger asChild>
+                              <Bubble
+                                variant="tinted"
+                                align="end"
+                                className="cursor-context-menu"
+                              >
+                                <BubbleContent className="whitespace-pre-wrap">
+                                  {msg.text}
+                                </BubbleContent>
+                              </Bubble>
+                            </ContextMenuTrigger>
+                            <ContextMenuContent>
+                              <ContextMenuItem
+                                onClick={() => handleCopyMessage(msg)}
+                              >
+                                <Copy className="size-3.5" />
+                                Copy
+                              </ContextMenuItem>
+                              <ContextMenuItem
+                                onClick={() => handleEditMessage(msg)}
+                              >
+                                <Pencil className="size-3.5" />
+                                Edit
+                              </ContextMenuItem>
+                              <ContextMenuSeparator />
+                              <ContextMenuItem
+                                variant="destructive"
+                                onClick={() => handleDeleteMessage(msg)}
+                              >
+                                <Trash2 className="size-3.5" />
+                                Delete
+                              </ContextMenuItem>
+                            </ContextMenuContent>
+                          </ContextMenu>
+                        )}
+                        <MessageFooter>
                         <time dateTime={msg.timestamp.toISOString()}>
                           {formatTime(msg.timestamp)}
                         </time>
                       </MessageFooter>
                     </MessageContent>
                   </Message>
-                ))}
+                )})}
               </MessageGroup>
             );
           })}

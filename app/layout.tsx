@@ -8,6 +8,7 @@ import SidebarLayout from "@/components/SidebarLayout";
 import NotificationInit from "@/components/NotificationInit";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import AppAblyProvider from "@/providers/AblyProvider";
+import QueryProvider from "@/providers/QueryProvider";
 import { Toaster } from "sonner";
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-sans" });
@@ -104,15 +105,17 @@ export default function RootLayout({
         <ThemeProvider attribute="class" defaultTheme="dark">
           <SidebarProvider>
             <TooltipProvider>
-              <AppAblyProvider>
-                <NotificationInit />
-                <Toaster position="bottom-right" richColors />
-                <main className="flex flex-col h-dvh">
-                  <SidebarLayout>
-                    {children}
-                  </SidebarLayout>
-                </main>
-              </AppAblyProvider>
+              <QueryProvider>
+                <AppAblyProvider>
+                  <NotificationInit />
+                  <Toaster position="bottom-right" richColors />
+                  <main className="flex flex-col h-dvh">
+                    <SidebarLayout>
+                      {children}
+                    </SidebarLayout>
+                  </main>
+                </AppAblyProvider>
+              </QueryProvider>
             </TooltipProvider>
           </SidebarProvider>
         </ThemeProvider>

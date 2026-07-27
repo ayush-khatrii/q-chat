@@ -85,6 +85,22 @@ export type UserRoom = {
   updatedAt: string;
 };
 
+export type JoinRoomResult =
+  | {
+      status: "APPROVED";
+      room: UserRoom;
+    }
+  | {
+      status: "PENDING";
+      request: {
+        id: string;
+        roomId: string;
+        roomCode: string;
+        roomName: string;
+        status: "PENDING";
+      };
+    };
+
 export function generateRoomCode() {
   let suffix = "";
   const randomValues = new Uint32Array(ROOM_CODE_LENGTH);

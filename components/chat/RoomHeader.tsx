@@ -42,6 +42,7 @@ import UserDropdown from "@/components/auth/UserDropdown";
 import RoomActionDialog from "@/components/rooms/RoomActionDialog";
 import RoomCreateDialog from "@/components/rooms/RoomCreateDialog";
 import RoomJoinDialog from "@/components/rooms/RoomJoinDialog";
+import RoomJoinRequestsPanel from "@/components/rooms/RoomJoinRequestsPanel";
 import { useSidebar } from "@/components/sidebar-context";
 import { useRooms } from "@/hooks/use-rooms";
 import { authClient } from "@/lib/auth-client";
@@ -127,13 +128,17 @@ export default function RoomHeader({ room, members }: RoomHeaderProps) {
   const handleCreateRoom = async (name: string, customCode?: string) => {
     const createdRoom = await createRoom(name, customCode);
 
-    router.push(`/chat/${createdRoom.code}`);
+    window.location.assign(`/chat/${createdRoom.code}`);
   };
 
   const handleJoinRoom = async (code: string) => {
-    const joinedRoom = await joinRoom(code);
+    const result = await joinRoom(code);
 
-    router.push(`/chat/${joinedRoom.code}`);
+    if (result.status === "APPROVED") {
+      window.location.assign(`/chat/${result.room.code}`);
+    }
+
+    return result;
   };
 
   const handleRemoveRoom = async () => {
@@ -342,7 +347,11 @@ export default function RoomHeader({ room, members }: RoomHeaderProps) {
                     <>
                       <MenuButton icon={UserPlus} label="Invite members" />
                       <MenuButton icon={Settings} label="Room settings" />
-                      <MenuButton icon={ShieldCheck} label="Admin controls" />
+                      <RoomJoinRequestsPanel
+                        roomId={currentRoom.id}
+                        ownerId={currentRoom.ownerId}
+                        isOwner={currentRoom.isOwner}
+                      />
                       <MenuButton
                         icon={currentRoom?.isOwner ? Trash2 : LogOut}
                         label={currentRoom?.isOwner ? "Delete room" : "Leave room"}

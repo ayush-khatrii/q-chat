@@ -14,7 +14,7 @@ export default async function Page() {
   }
 
   const membership = await prisma.roomMember.findFirst({
-    where: { userId: session.user.id },
+    where: { userId: session.user.id, status: "APPROVED" },
     orderBy: { joinedAt: "desc" },
     select: {
       room: {

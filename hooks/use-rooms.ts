@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useState } from "react";
-import type { UserRoom } from "@/lib/rooms";
+import type { JoinRoomResult, UserRoom } from "@/lib/rooms";
 
 type RoomsResponse = {
   rooms: UserRoom[];
@@ -8,6 +8,8 @@ type RoomsResponse = {
 type CreateRoomResponse = {
   room: UserRoom;
 };
+
+type JoinRoomResponse = JoinRoomResult;
 
 type RemoveRoomResponse = {
   action: "deleted" | "left";
@@ -44,6 +46,15 @@ function isCreateRoomResponse(payload: unknown): payload is CreateRoomResponse {
     "room" in payload &&
     typeof payload.room === "object" &&
     payload.room !== null
+  );
+}
+
+function isJoinRoomResponse(payload: unknown): payload is JoinRoomResponse {
+  return (
+    typeof payload === "object" &&
+    payload !== null &&
+    "status" in payload &&
+    (payload.status === "APPROVED" || payload.status === "PENDING")
   );
 }
 
@@ -266,12 +277,17 @@ export function useRooms(enabled = true, cacheScope?: string | null) {
       });
 
       const payload = (await response.json().catch(() => null)) as
-        | CreateRoomResponse
+        | JoinRoomResponse
         | { error?: string }
         | null;
 
-      if (!response.ok || !isCreateRoomResponse(payload)) {
+      if (!response.ok || !isJoinRoomResponse(payload)) {
         throw new Error(getPayloadError(payload, "Unable to join the room."));
+      }
+
+      if (payload.status === "PENDING") {
+        setError(null);
+        return payload;
       }
 
       setRooms((currentRooms) => {
@@ -286,7 +302,7 @@ export function useRooms(enabled = true, cacheScope?: string | null) {
       setHasLoaded(true);
       setError(null);
 
-      return payload.room;
+      return payload;
     } catch (joinError) {
       const message =
         joinError instanceof Error

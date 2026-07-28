@@ -57,13 +57,7 @@ export async function GET() {
 
     const tokenRequestData = await client.auth.createTokenRequest({
       clientId: session.user.id,
-<<<<<<< HEAD
       capability: JSON.stringify(capabilities),
-=======
-      capability: JSON.stringify({
-        "qchat:*": ["*"],
-      }),
->>>>>>> b9a92af3077845a4085c151f2d81027028508985
     });
 
     return NextResponse.json(tokenRequestData);

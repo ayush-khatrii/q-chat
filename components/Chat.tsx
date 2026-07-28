@@ -1,9 +1,11 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
-import { Send } from "lucide-react";
+import { useState, useRef, useEffect, useCallback } from "react";
+import { Send, Copy, Pencil, Trash2 } from "lucide-react";
+import { toast } from "sonner";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Bubble, BubbleContent } from "@/components/ui/bubble";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   Message,
   MessageContent,
@@ -12,6 +14,13 @@ import {
   MessageHeader,
 } from "@/components/ui/message";
 import { Marker, MarkerContent } from "@/components/ui/marker"
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuSeparator,
+  ContextMenuTrigger,
+} from "@/components/ui/context-menu"
 
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -20,6 +29,7 @@ import { initFcm } from "@/lib/fcm";
 import type { UserRoomMember } from "@/lib/rooms";
 import {
   ChatMessageEventType,
+  ChatMessageAction,
   type ChatMessageEvent,
   type Message as AblyMessage,
 } from "@ably/chat";
@@ -75,18 +85,63 @@ export default function Chat({ roomCode, members }: ChatProps) {
   const [messages, setMessages] = useState<AblyMessage[]>([]);
   const [draft, setDraft] = useState("");
   const [sendError, setSendError] = useState<string | null>(null);
+  const [hasMore, setHasMore] = useState(false);
+  const [loadingHistory, setLoadingHistory] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const sentinelRef = useRef<HTMLDivElement | null>(null);
+  // Stores the Ably PaginatedResult — acts as our built-in cursor/cache
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const historyPageRef = useRef<any>(null);
 
   // This is the entire "receive messages" setup — straight from Ably's docs.
-  const { sendMessage } = useMessages({
+  const { sendMessage, historyBeforeSubscribe, deleteMessage } = useMessages({
     listener: (event: ChatMessageEvent) => {
       if (event.type === ChatMessageEventType.Created) {
         setMessages((prev) => [...prev, event.message]);
       }
+      if (event.type === ChatMessageEventType.Deleted) {
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.serial === event.message.serial ? event.message : m,
+          ),
+        );
+      }
     },
   });
 
-  // 🔔 Register FCM on mount (belt-and-suspenders alongside NotificationInit in layout)
+  // 📜 Load message history when the component mounts
+  useEffect(() => {
+    if (!historyBeforeSubscribe) return;
+
+    setLoadingHistory(true);
+    historyBeforeSubscribe({ limit: 20 })
+      .then((page) => {
+        setMessages(page.items);
+        setHasMore(!page.isLast());
+        historyPageRef.current = page;
+      })
+      .catch((err) => console.error("Error loading history:", err))
+      .finally(() => setLoadingHistory(false));
+  }, [historyBeforeSubscribe]);
+
+  // 📜 Load older messages (pagination)
+  const loadMore = useCallback(async () => {
+    if (!historyPageRef.current || !hasMore || loadingHistory) return;
+    setLoadingHistory(true);
+    try {
+      const nextPage = await historyPageRef.current.next();
+      if (!nextPage) return;
+      setMessages((prev) => [...nextPage.items, ...prev]);
+      setHasMore(!nextPage.isLast());
+      historyPageRef.current = nextPage;
+    } catch (err) {
+      console.error("Error loading more history:", err);
+    } finally {
+      setLoadingHistory(false);
+    }
+  }, [hasMore, loadingHistory]);
+
+  // �🔔 Register FCM on mount (belt-and-suspenders alongside NotificationInit in layout)
   useEffect(() => {
     const userId = currentUser?.id;
     console.log("🔔 Chat useEffect FCM check:", { userId: !!userId });
@@ -98,12 +153,61 @@ export default function Chat({ roomCode, members }: ChatProps) {
     }
   }, [currentUser?.id]);
 
+  // 👁️ Infinite scroll: observe sentinel to load older messages
+  useEffect(() => {
+    const el = sentinelRef.current;
+    if (!el) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting) {
+          loadMore();
+        }
+      },
+      { threshold: 0.1 },
+    );
+
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [loadMore]);
+
   useEffect(() => {
     const textarea = textareaRef.current;
     if (!textarea) return;
     textarea.style.height = "auto";
     textarea.style.height = `${Math.min(textarea.scrollHeight, 160)}px`;
   }, [draft]);
+
+  // ── Delete message helper ──
+  const handleDeleteMessage = useCallback(
+    async (msg: AblyMessage) => {
+      try {
+        await deleteMessage(msg.serial, { description: "Deleted by user" });
+        toast.success("Message deleted");
+      } catch (error) {
+        toast.error("Failed to delete message");
+        console.error("Delete error:", error);
+      }
+    },
+    [deleteMessage],
+  );
+
+  // ── Edit message helper ──
+  const handleEditMessage = useCallback((msg: AblyMessage) => {
+    // Set the draft to the message text so user can edit and re-send
+    // For now, just show a toast — you can extend this later
+    toast.info("Edit feature coming soon!");
+  }, []);
+
+  // ── Copy message helper ──
+  const handleCopyMessage = useCallback(async (msg: AblyMessage) => {
+    try {
+      await navigator.clipboard.writeText(msg.text);
+      toast.success("Copied to clipboard");
+    } catch {
+      toast.error("Failed to copy");
+    }
+  }, []);
 
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -233,50 +337,106 @@ export default function Chat({ roomCode, members }: ChatProps) {
 
   return (
     <div className="mx-auto flex min-h-0 w-full max-w-5xl flex-1 flex-col">
-      <div className="flex flex-1 flex-col gap-3 px-4 py-4">
-        {groups.map((group) => {
-          const senderId = group[0].clientId;
-          const sender = members.find((m) => m.userId === senderId)?.user;
-          const isMe = senderId === currentUser?.id;
-          const senderName = sender?.name ?? sender?.email ?? senderId;
-          const senderImage = isMe ? currentUser?.image : sender?.image;
+      <ScrollArea className="min-h-0 flex-1">
+        <div className="flex flex-col gap-3 px-4 py-4">
+          {/* Sentinel: when this scrolls into view, load older messages */}
+          <div ref={sentinelRef} className="h-1" />
+          {loadingHistory && (
+            <p className="text-center text-xs text-muted-foreground py-2">
+              Loading older messages…
+            </p>
+          )}
+          {groups.map((group) => {
+            const senderId = group[0].clientId;
+            const sender = members.find((m) => m.userId === senderId)?.user;
+            const isMe = senderId === currentUser?.id;
+            const senderName = sender?.name ?? sender?.email ?? senderId;
+            const senderImage = isMe ? currentUser?.image : sender?.image;
 
-          return (
-            <MessageGroup key={group[0].serial}>
-              {group.map((msg, idx) => (
-                <Message key={msg.serial} align={isMe ? "end" : "start"}>
-                  <MessageContent>
-                    {idx === 0 && (
-                      <MessageHeader>
-                        <Avatar className="size-6 mr-2">
-                          <AvatarImage src={senderImage ?? undefined} alt={senderName} />
-                          <AvatarFallback>
-                            {getInitials(senderName)}
-                          </AvatarFallback>
-                        </Avatar>
-                        <span>{senderName}</span>
-                      </MessageHeader>
-                    )}
-                    <Bubble
-                      variant={isMe ? "tinted" : "muted"}
-                      align={isMe ? "end" : "start"}
-                    >
-                      <BubbleContent className="whitespace-pre-wrap">
-                        {msg.text}
-                      </BubbleContent>
-                    </Bubble>
-                    <MessageFooter>
-                      <time dateTime={msg.timestamp.toISOString()}>
-                        {formatTime(msg.timestamp)}
-                      </time>
-                    </MessageFooter>
-                  </MessageContent>
-                </Message>
-              ))}
-            </MessageGroup>
-          );
-        })}
-      </div>
+            return (
+              <MessageGroup key={group[0].serial}>
+                {group.map((msg, idx) => {
+                  const isDeleted = msg.action === ChatMessageAction.MessageDelete;
+
+                  return (
+                    <Message key={msg.serial} align={isMe ? "end" : "start"}>
+                      <MessageContent>
+                        {idx === 0 && (
+                          <MessageHeader>
+                            <Avatar className="size-6 mr-2">
+                              <AvatarImage src={senderImage ?? undefined} alt={senderName} />
+                              <AvatarFallback>
+                                {getInitials(senderName)}
+                              </AvatarFallback>
+                            </Avatar>
+                            <span>{senderName}</span>
+                          </MessageHeader>
+                        )}
+                        {isDeleted ? (
+                          <Bubble
+                            variant={isMe ? "tinted" : "muted"}
+                            align={isMe ? "end" : "start"}
+                          >
+                            <BubbleContent className="italic text-muted-foreground/50 select-none text-xs">
+                              message deleted by {senderName}
+                            </BubbleContent>
+                          </Bubble>
+                        ) : !isMe ? (
+                          <Bubble variant="muted" align="start">
+                            <BubbleContent className="whitespace-pre-wrap">
+                              {msg.text}
+                            </BubbleContent>
+                          </Bubble>
+                        ) : (
+                          <ContextMenu>
+                            <ContextMenuTrigger asChild>
+                              <Bubble
+                                variant="tinted"
+                                align="end"
+                                className="cursor-context-menu"
+                              >
+                                <BubbleContent className="whitespace-pre-wrap">
+                                  {msg.text}
+                                </BubbleContent>
+                              </Bubble>
+                            </ContextMenuTrigger>
+                            <ContextMenuContent>
+                              <ContextMenuItem
+                                onClick={() => handleCopyMessage(msg)}
+                              >
+                                <Copy className="size-3.5" />
+                                Copy
+                              </ContextMenuItem>
+                              <ContextMenuItem
+                                onClick={() => handleEditMessage(msg)}
+                              >
+                                <Pencil className="size-3.5" />
+                                Edit
+                              </ContextMenuItem>
+                              <ContextMenuSeparator />
+                              <ContextMenuItem
+                                variant="destructive"
+                                onClick={() => handleDeleteMessage(msg)}
+                              >
+                                <Trash2 className="size-3.5" />
+                                Delete
+                              </ContextMenuItem>
+                            </ContextMenuContent>
+                          </ContextMenu>
+                        )}
+                        <MessageFooter>
+                        <time dateTime={msg.timestamp.toISOString()}>
+                          {formatTime(msg.timestamp)}
+                        </time>
+                      </MessageFooter>
+                    </MessageContent>
+                  </Message>
+                )})}
+              </MessageGroup>
+            );
+          })}
+        </div>
+      </ScrollArea>
 
       {sendError && (
         <p className="px-4 pb-2 text-xs text-destructive">{sendError}</p>

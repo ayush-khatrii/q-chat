@@ -32,6 +32,7 @@ export async function DELETE(
       roomMembers: {
         where: {
           userId: user.id,
+          status: "APPROVED",
         },
         select: {
           id: true,

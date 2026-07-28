@@ -49,7 +49,10 @@ export async function getRoomForMember(code: string, userId: string) {
     where: {
       code,
       roomMembers: {
-        some: { userId },
+        some: {
+          userId,
+          status: "APPROVED",
+        },
       },
     },
     select: {
@@ -60,9 +63,10 @@ export async function getRoomForMember(code: string, userId: string) {
       createdAt: true,
       updatedAt: true,
       _count: {
-        select: { roomMembers: true },
+        select: { roomMembers: { where: { status: "APPROVED" } } },
       },
       roomMembers: {
+        where: { status: "APPROVED" },
         orderBy: { joinedAt: "asc" },
         select: {
           id: true,

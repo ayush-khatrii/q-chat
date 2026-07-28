@@ -26,6 +26,12 @@ model User {
   @@map("user")
 }
 
+enum RoomMemberStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
 model Room {
   id      String @id @default(cuid())
   code    String @unique
@@ -47,6 +53,7 @@ model RoomMember {
   id       String   @id @default(cuid())
   userId   String
   roomId   String
+  status   RoomMemberStatus @default(PENDING)
   user     User     @relation(fields: [userId], references: [id])
   room     Room     @relation(fields: [roomId], references: [id])
   joinedAt DateTime @default(now())
@@ -54,6 +61,7 @@ model RoomMember {
   @@unique([userId, roomId])
   @@index([userId])
   @@index([roomId])
+  @@index([roomId, status])
 }
 
 model Message {

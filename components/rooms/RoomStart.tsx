@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import { LogIn, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import RoomCreateDialog from "@/components/rooms/RoomCreateDialog";
@@ -9,7 +8,6 @@ import RoomJoinDialog from "@/components/rooms/RoomJoinDialog";
 import { useRooms } from "@/hooks/use-rooms";
 
 export default function RoomStart({ userId }: { userId: string }) {
-  const router = useRouter();
   const [createOpen, setCreateOpen] = useState(false);
   const [joinOpen, setJoinOpen] = useState(false);
   const {
@@ -22,12 +20,17 @@ export default function RoomStart({ userId }: { userId: string }) {
 
   const handleCreate = async (name: string, customCode?: string) => {
     const room = await createRoom(name, customCode);
-    router.push(`/chat/${room.code}`);
+    window.location.assign(`/chat/${room.code}`);
   };
 
   const handleJoin = async (code: string) => {
-    const room = await joinRoom(code);
-    router.push(`/chat/${room.code}`);
+    const result = await joinRoom(code);
+
+    if (result.status === "APPROVED") {
+      window.location.assign(`/chat/${result.room.code}`);
+    }
+
+    return result;
   };
 
   return (

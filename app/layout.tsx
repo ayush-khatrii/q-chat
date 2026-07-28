@@ -8,6 +8,7 @@ import SidebarLayout from "@/components/SidebarLayout";
 import NotificationInit from "@/components/NotificationInit";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import AppAblyProvider from "@/providers/AblyProvider";
+import QueryProvider from "@/providers/QueryProvider";
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-sans" });
 
@@ -103,14 +104,16 @@ export default function RootLayout({
         <ThemeProvider attribute="class" defaultTheme="dark">
           <SidebarProvider>
             <TooltipProvider>
-              <AppAblyProvider>
-                <NotificationInit />
-                <main className="flex flex-col h-dvh">
-                  <SidebarLayout>
-                    {children}
-                  </SidebarLayout>
-                </main>
-              </AppAblyProvider>
+              <QueryProvider>
+                <AppAblyProvider>
+                  <NotificationInit />
+                  <main className="flex flex-col h-dvh">
+                    <SidebarLayout>
+                      {children}
+                    </SidebarLayout>
+                  </main>
+                </AppAblyProvider>
+              </QueryProvider>
             </TooltipProvider>
           </SidebarProvider>
         </ThemeProvider>

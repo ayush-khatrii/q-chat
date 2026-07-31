@@ -280,9 +280,12 @@ export default function RoomHeader({ room, members }: RoomHeaderProps) {
                             </AvatarFallback>
                           </Avatar>
                           <div className="min-w-0 flex-1">
-                            <p className="truncate text-xs font-medium">
+                            <Link
+                              href={`/users/${member.userId}`}
+                              className="block truncate text-xs font-medium hover:text-primary hover:underline"
+                            >
                               {getDisplayName(member.user)}
-                            </p>
+                            </Link>
                             <p className="truncate text-[0.625rem] text-muted-foreground">
                               Joined {formatJoinedAt(member.joinedAt)}
                             </p>

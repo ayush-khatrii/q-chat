@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
 import { Copy, Pencil, Send, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -434,9 +435,18 @@ export default function Chat({ roomCode, members }: ChatProps) {
                     </Avatar> */}
 
                     <div className="flex min-w-0 max-w-full items-center gap-2 text-[10px] sm:text-xs">
-                      <span className="min-w-0 truncate font-semibold">
-                        {senderName}
-                      </span>
+                      {isMe ? (
+                        <span className="min-w-0 truncate font-semibold">
+                          {senderName}
+                        </span>
+                      ) : (
+                        <Link
+                          href={`/users/${group.senderId}`}
+                          className="min-w-0 truncate font-semibold hover:text-primary hover:underline"
+                        >
+                          {senderName}
+                        </Link>
+                      )}
 
                       <span className="shrink-0 text-border">|</span>
 

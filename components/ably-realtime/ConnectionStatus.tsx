@@ -2,7 +2,6 @@ import { useChatConnection } from "@ably/chat/react";
 
 const ConnectionStatusComponent = () => {
   const { currentStatus } = useChatConnection();
-  console.log(currentStatus);
   return (
     <div className="p-4 text-center h-full border-gray-300 bg-gray-100">
       <h2 className="text-lg font-semibold text-blue-500">

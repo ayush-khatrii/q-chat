@@ -38,6 +38,11 @@ type MessageMetadata = {
   image?: string;
 };
 
+type MessageGroup = {
+  senderId: string;
+  messages: AblyMessage[];
+};
+
 function getInitials(name: string): string {
   const initials = name
     .split(/\s|@/)
@@ -205,6 +210,27 @@ export default function Chat({ roomCode, members }: ChatProps) {
     [messages],
   );
 
+  /*
+   * Consecutive messages from the same client are combined into one group.
+   * A new group is created only when the sender changes.
+   */
+  const messageGroups = useMemo<MessageGroup[]>(() => {
+    return sortedMessages.reduce<MessageGroup[]>((groups, message) => {
+      const lastGroup = groups[groups.length - 1];
+
+      if (lastGroup && lastGroup.senderId === message.clientId) {
+        lastGroup.messages.push(message);
+      } else {
+        groups.push({
+          senderId: message.clientId,
+          messages: [message],
+        });
+      }
+
+      return groups;
+    }, []);
+  }, [sortedMessages]);
+
   const typingUsers = useMemo(
     () =>
       Array.from(currentTypers)
@@ -356,7 +382,7 @@ export default function Chat({ roomCode, members }: ChatProps) {
           role="log"
           aria-live="polite"
           aria-label="Chat messages"
-          className="mx-auto flex w-full min-w-0 flex-col gap-5 px-3 py-4 sm:px-5 sm:py-6"
+          className="mx-auto flex w-full min-w-0 flex-col gap-6 px-3 py-4 sm:px-5 sm:py-6"
         >
           <div ref={sentinelRef} className="h-px w-full" />
 
@@ -368,15 +394,16 @@ export default function Chat({ roomCode, members }: ChatProps) {
             </div>
           )}
 
-          {sortedMessages.map((message) => {
-            const senderId = message.clientId;
+          {messageGroups.map((group) => {
+            const firstMessage = group.messages[0];
+            const lastMessage = group.messages[group.messages.length - 1];
+
             const sender = members.find(
-              (member) => member.userId === senderId,
+              (member) => member.userId === group.senderId,
             )?.user;
-            const metadata = getMessageMetadata(message);
-            const isMe = senderId === currentUser?.id;
-            const isDeleted =
-              message.action === ChatMessageAction.MessageDelete;
+
+            const metadata = getMessageMetadata(firstMessage);
+            const isMe = group.senderId === currentUser?.id;
 
             const senderName = isMe
               ? currentUser?.name ??
@@ -386,43 +413,16 @@ export default function Chat({ roomCode, members }: ChatProps) {
               : sender?.name ??
               sender?.email ??
               metadata.displayName ??
-              senderId ??
+              group.senderId ??
               "Unknown user";
 
             const senderImage = isMe
               ? currentUser?.image ?? metadata.image
               : sender?.image ?? metadata.image;
 
-            const bubble = (
-              <div
-                className={[
-                  "w-fit max-w-full overflow-hidden px-4 py-2.5 shadow-sm",
-                  "ring-1 ring-inset ring-black/5 dark:ring-white/5",
-                  isDeleted
-                    ? "rounded-2xl bg-muted/60 text-muted-foreground"
-                    : isMe
-                      ? "rounded-2xl rounded-br-md bg-primary text-primary-foreground"
-                      : "rounded-2xl rounded-bl-md bg-muted text-foreground",
-                  !isDeleted && isMe ? "cursor-context-menu" : "",
-                ].join(" ")}
-              >
-                <p
-                  className={[
-                    "max-w-full whitespace-pre-wrap text-sm leading-6",
-                    "break-words [overflow-wrap:anywhere]",
-                    isDeleted ? "select-none italic opacity-70" : "",
-                  ].join(" ")}
-                >
-                  {isDeleted
-                    ? `Message deleted by ${senderName}`
-                    : message.text}
-                </p>
-              </div>
-            );
-
             return (
               <article
-                key={message.serial}
+                key={`${group.senderId}-${firstMessage.serial}`}
                 className={[
                   "flex w-full min-w-0",
                   isMe ? "justify-end" : "justify-start",
@@ -430,11 +430,12 @@ export default function Chat({ roomCode, members }: ChatProps) {
               >
                 <div
                   className={[
-                    "flex min-w-0 max-w-[88%] flex-col gap-1.5",
+                    "flex min-w-0 max-w-[88%] flex-col gap-2",
                     "sm:max-w-[78%] md:max-w-[72%] lg:max-w-[68%]",
                     isMe ? "items-end" : "items-start",
                   ].join(" ")}
                 >
+                  {/* Sender identity is rendered once per group */}
                   <div
                     className={[
                       "flex max-w-full min-w-0 items-center gap-2 px-1",
@@ -452,10 +453,7 @@ export default function Chat({ roomCode, members }: ChatProps) {
                     </Avatar>
 
                     <div
-                      className={[
-                        "flex min-w-0 items-center gap-2 text-xs",
-                        isMe ? "flex-row-reverse" : "flex-row",
-                      ].join(" ")}
+                      className="flex min-w-0 items-center gap-2 text-xs"
                     >
                       <span className="min-w-0 truncate font-semibold text-foreground">
                         {senderName}
@@ -469,49 +467,109 @@ export default function Chat({ roomCode, members }: ChatProps) {
                       </span>
 
                       <time
-                        dateTime={message.timestamp.toISOString()}
+                        dateTime={lastMessage.timestamp.toISOString()}
+                        title={`From ${formatTime(firstMessage.timestamp)} to ${formatTime(lastMessage.timestamp)}`}
                         className="shrink-0 whitespace-nowrap text-[11px] text-muted-foreground"
                       >
-                        {formatTime(message.timestamp)}
+                        {formatTime(lastMessage.timestamp)}
                       </time>
                     </div>
                   </div>
 
-                  {!isDeleted && isMe ? (
-                    <ContextMenu>
-                      <ContextMenuTrigger asChild>
-                        {bubble}
-                      </ContextMenuTrigger>
+                  {/* Consecutive messages are rendered together */}
+                  <div
+                    className={[
+                      "flex max-w-full flex-col gap-1",
+                      isMe ? "items-end" : "items-start",
+                    ].join(" ")}
+                  >
+                    {group.messages.map((message, index) => {
+                      const isDeleted =
+                        message.action === ChatMessageAction.MessageDelete;
 
-                      <ContextMenuContent className="w-40">
-                        <ContextMenuItem
-                          onClick={() => handleCopyMessage(message)}
+                      const isFirst = index === 0;
+                      const isLast = index === group.messages.length - 1;
+
+                      const bubble = (
+                        <div
+                          className={[
+                            "w-fit max-w-full overflow-hidden px-4 py-2.5 shadow-sm",
+                            "ring-1 ring-inset ring-black/5 dark:ring-white/5",
+                            isDeleted
+                              ? "rounded-2xl bg-muted/60 text-muted-foreground"
+                              : isMe
+                                ? [
+                                  "bg-primary text-primary-foreground",
+                                  "rounded-2xl",
+                                  !isFirst && "rounded-tr-md",
+                                  !isLast && "rounded-br-md",
+                                ]
+                                  .filter(Boolean)
+                                  .join(" ")
+                                : [
+                                  "bg-muted text-foreground",
+                                  "rounded-2xl",
+                                  !isFirst && "rounded-tl-md",
+                                  !isLast && "rounded-bl-md",
+                                ]
+                                  .filter(Boolean)
+                                  .join(" "),
+                            !isDeleted && isMe ? "cursor-context-menu" : "",
+                          ].join(" ")}
                         >
-                          <Copy className="mr-2 size-4" />
-                          Copy
-                        </ContextMenuItem>
+                          <p
+                            className={[
+                              "max-w-full whitespace-pre-wrap text-sm leading-6",
+                              "break-words [overflow-wrap:anywhere]",
+                              isDeleted
+                                ? "select-none italic opacity-70"
+                                : "",
+                            ].join(" ")}
+                          >
+                            {isDeleted
+                              ? `Message deleted by ${senderName}`
+                              : message.text}
+                          </p>
+                        </div>
+                      );
 
-                        <ContextMenuItem
-                          onClick={() => handleEditMessage(message)}
-                        >
-                          <Pencil className="mr-2 size-4" />
-                          Edit
-                        </ContextMenuItem>
+                      return !isDeleted && isMe ? (
+                        <ContextMenu key={message.serial}>
+                          <ContextMenuTrigger asChild>
+                            {bubble}
+                          </ContextMenuTrigger>
 
-                        <ContextMenuSeparator />
+                          <ContextMenuContent className="w-40">
+                            <ContextMenuItem
+                              onClick={() => handleCopyMessage(message)}
+                            >
+                              <Copy className="mr-2 size-4" />
+                              Copy
+                            </ContextMenuItem>
 
-                        <ContextMenuItem
-                          variant="destructive"
-                          onClick={() => handleDeleteMessage(message)}
-                        >
-                          <Trash2 className="mr-2 size-4" />
-                          Delete
-                        </ContextMenuItem>
-                      </ContextMenuContent>
-                    </ContextMenu>
-                  ) : (
-                    bubble
-                  )}
+                            <ContextMenuItem
+                              onClick={() => handleEditMessage(message)}
+                            >
+                              <Pencil className="mr-2 size-4" />
+                              Edit
+                            </ContextMenuItem>
+
+                            <ContextMenuSeparator />
+
+                            <ContextMenuItem
+                              variant="destructive"
+                              onClick={() => handleDeleteMessage(message)}
+                            >
+                              <Trash2 className="mr-2 size-4" />
+                              Delete
+                            </ContextMenuItem>
+                          </ContextMenuContent>
+                        </ContextMenu>
+                      ) : (
+                        <div key={message.serial}>{bubble}</div>
+                      );
+                    })}
+                  </div>
                 </div>
               </article>
             );

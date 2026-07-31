@@ -1,78 +1,78 @@
 "use client";
 
-import { useState, useRef, useEffect, useCallback } from "react";
-import { Send, Copy, Pencil, Trash2 } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Copy, Pencil, Send, Trash2 } from "lucide-react";
 import { toast } from "sonner";
+
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Bubble, BubbleContent } from "@/components/ui/bubble";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import {
-  Message,
-  MessageContent,
-  MessageFooter,
-  MessageGroup,
-  MessageHeader,
-} from "@/components/ui/message";
-import { Marker, MarkerContent } from "@/components/ui/marker"
+import { Button } from "@/components/ui/button";
 import {
   ContextMenu,
   ContextMenuContent,
   ContextMenuItem,
   ContextMenuSeparator,
   ContextMenuTrigger,
-} from "@/components/ui/context-menu"
-
-import { Button } from "@/components/ui/button";
+} from "@/components/ui/context-menu";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { Textarea } from "@/components/ui/textarea";
-import { authClient } from "@/lib/auth-client";
-import { initFcm } from "@/lib/fcm";
-import type { UserRoomMember } from "@/lib/rooms";
+
 import {
-  ChatMessageEventType,
   ChatMessageAction,
+  ChatMessageEventType,
   type ChatMessageEvent,
   type Message as AblyMessage,
 } from "@ably/chat";
 import { useMessages, useTyping } from "@ably/chat/react";
+
+import { authClient } from "@/lib/auth-client";
+import { initFcm } from "@/lib/fcm";
+import type { UserRoomMember } from "@/lib/rooms";
 
 type ChatProps = {
   roomCode: string;
   members: UserRoomMember[];
 };
 
-
-type ReplyLength = "very-short" | "short" | "medium" | "long" | null;
-
-function getReplyLength(value: string): ReplyLength {
-  const text = value.trim();
-
-  if (!text) return null;
-
-  const wordCount = text.split(/\s+/).length;
-
-  if (wordCount <= 2) return "very-short";
-  if (wordCount <= 6) return "short";
-  if (wordCount <= 15) return "medium";
-
-  return "long";
-}
+type MessageMetadata = {
+  displayName?: string;
+  image?: string;
+};
 
 function getInitials(name: string): string {
-  return name
+  const initials = name
     .split(/\s|@/)
     .filter(Boolean)
     .map((part) => part[0])
     .join("")
     .toUpperCase()
     .slice(0, 2);
+
+  return initials || "?";
 }
 
-function formatTime(value: Date) {
+function getMessageMetadata(message: AblyMessage): MessageMetadata {
+  if (!message.metadata || typeof message.metadata !== "object") {
+    return {};
+  }
+
+  const metadata = message.metadata as Record<string, unknown>;
+
+  return {
+    displayName:
+      typeof metadata.displayName === "string"
+        ? metadata.displayName
+        : undefined,
+    image: typeof metadata.image === "string" ? metadata.image : undefined,
+  };
+}
+
+function formatTime(value: Date): string {
   return new Intl.DateTimeFormat("en-IN", {
     day: "numeric",
+    month: "short",
     hour: "numeric",
     minute: "2-digit",
-    month: "short",
+    hour12: true,
     timeZone: "Asia/Kolkata",
   }).format(value);
 }
@@ -80,6 +80,7 @@ function formatTime(value: Date) {
 export default function Chat({ roomCode, members }: ChatProps) {
   const { data: session } = authClient.useSession();
   const currentUser = session?.user;
+
   const { currentTypers, keystroke, stop } = useTyping();
 
   const [messages, setMessages] = useState<AblyMessage[]>([]);
@@ -87,133 +88,211 @@ export default function Chat({ roomCode, members }: ChatProps) {
   const [sendError, setSendError] = useState<string | null>(null);
   const [hasMore, setHasMore] = useState(false);
   const [loadingHistory, setLoadingHistory] = useState(false);
+
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const sentinelRef = useRef<HTMLDivElement | null>(null);
-  // Stores the Ably PaginatedResult — acts as our built-in cursor/cache
+
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const historyPageRef = useRef<any>(null);
 
-  // This is the entire "receive messages" setup — straight from Ably's docs.
   const { sendMessage, historyBeforeSubscribe, deleteMessage } = useMessages({
     listener: (event: ChatMessageEvent) => {
       if (event.type === ChatMessageEventType.Created) {
-        setMessages((prev) => [...prev, event.message]);
+        setMessages((previous) => {
+          if (
+            previous.some((message) => message.serial === event.message.serial)
+          ) {
+            return previous;
+          }
+
+          return [...previous, event.message];
+        });
       }
+
       if (event.type === ChatMessageEventType.Deleted) {
-        setMessages((prev) =>
-          prev.map((m) =>
-            m.serial === event.message.serial ? event.message : m,
+        setMessages((previous) =>
+          previous.map((message) =>
+            message.serial === event.message.serial
+              ? event.message
+              : message,
           ),
         );
       }
     },
   });
 
-  // 📜 Load message history when the component mounts
   useEffect(() => {
     if (!historyBeforeSubscribe) return;
 
     setLoadingHistory(true);
+
     historyBeforeSubscribe({ limit: 20 })
       .then((page) => {
         setMessages(page.items);
         setHasMore(!page.isLast());
         historyPageRef.current = page;
       })
-      .catch((err) => console.error("Error loading history:", err))
-      .finally(() => setLoadingHistory(false));
+      .catch((error) => {
+        console.error("Error loading message history:", error);
+      })
+      .finally(() => {
+        setLoadingHistory(false);
+      });
   }, [historyBeforeSubscribe]);
 
-  // 📜 Load older messages (pagination)
   const loadMore = useCallback(async () => {
     if (!historyPageRef.current || !hasMore || loadingHistory) return;
+
     setLoadingHistory(true);
+
     try {
       const nextPage = await historyPageRef.current.next();
+
       if (!nextPage) return;
-      setMessages((prev) => [...nextPage.items, ...prev]);
+
+      setMessages((previous) => [...nextPage.items, ...previous]);
       setHasMore(!nextPage.isLast());
       historyPageRef.current = nextPage;
-    } catch (err) {
-      console.error("Error loading more history:", err);
+    } catch (error) {
+      console.error("Error loading older messages:", error);
     } finally {
       setLoadingHistory(false);
     }
   }, [hasMore, loadingHistory]);
 
-  // �🔔 Register FCM on mount (belt-and-suspenders alongside NotificationInit in layout)
   useEffect(() => {
     const userId = currentUser?.id;
-    console.log("🔔 Chat useEffect FCM check:", { userId: !!userId });
+
     if (userId) {
-      console.log("🔔 Chat: triggering FCM registration for", userId);
-      initFcm(userId).then((ok) => {
-        console.log("🔔 Chat: FCM registration result:", ok);
-      });
+      void initFcm(userId);
     }
   }, [currentUser?.id]);
 
-  // 👁️ Infinite scroll: observe sentinel to load older messages
   useEffect(() => {
-    const el = sentinelRef.current;
-    if (!el) return;
+    const sentinel = sentinelRef.current;
+
+    if (!sentinel) return;
 
     const observer = new IntersectionObserver(
-      (entries) => {
-        if (entries[0].isIntersecting) {
-          loadMore();
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          void loadMore();
         }
       },
       { threshold: 0.1 },
     );
 
-    observer.observe(el);
+    observer.observe(sentinel);
+
     return () => observer.disconnect();
   }, [loadMore]);
 
   useEffect(() => {
     const textarea = textareaRef.current;
+
     if (!textarea) return;
+
     textarea.style.height = "auto";
     textarea.style.height = `${Math.min(textarea.scrollHeight, 160)}px`;
   }, [draft]);
 
-  // ── Delete message helper ──
+  const sortedMessages = useMemo(
+    () =>
+      [...messages].sort(
+        (first, second) =>
+          first.timestamp.getTime() - second.timestamp.getTime(),
+      ),
+    [messages],
+  );
+
+  const typingUsers = useMemo(
+    () =>
+      Array.from(currentTypers)
+        .filter((typer) => typer.clientId !== currentUser?.id)
+        .map((typer) => {
+          const member = members.find(
+            (item) => item.userId === typer.clientId,
+          )?.user;
+
+          return member?.name ?? member?.email ?? typer.clientId;
+        }),
+    [currentTypers, currentUser?.id, members],
+  );
+
+  const typingText =
+    typingUsers.length === 1
+      ? `${typingUsers[0]} is typing…`
+      : typingUsers.length === 2
+        ? `${typingUsers[0]} and ${typingUsers[1]} are typing…`
+        : typingUsers.length > 2
+          ? `${typingUsers[0]} and ${typingUsers.length - 1} others are typing…`
+          : null;
+
   const handleDeleteMessage = useCallback(
-    async (msg: AblyMessage) => {
+    async (message: AblyMessage) => {
       try {
-        await deleteMessage(msg.serial, { description: "Deleted by user" });
+        await deleteMessage(message.serial, {
+          description: "Deleted by user",
+        });
+
         toast.success("Message deleted");
       } catch (error) {
-        toast.error("Failed to delete message");
         console.error("Delete error:", error);
+        toast.error("Failed to delete message");
       }
     },
     [deleteMessage],
   );
 
-  // ── Edit message helper ──
-  const handleEditMessage = useCallback((msg: AblyMessage) => {
-    // Set the draft to the message text so user can edit and re-send
-    // For now, just show a toast — you can extend this later
+  const handleEditMessage = useCallback((_message: AblyMessage) => {
     toast.info("Edit feature coming soon!");
   }, []);
 
-  // ── Copy message helper ──
-  const handleCopyMessage = useCallback(async (msg: AblyMessage) => {
+  const handleCopyMessage = useCallback(async (message: AblyMessage) => {
     try {
-      await navigator.clipboard.writeText(msg.text);
+      await navigator.clipboard.writeText(message.text);
       toast.success("Copied to clipboard");
     } catch {
-      toast.error("Failed to copy");
+      toast.error("Failed to copy message");
     }
   }, []);
 
+  const handleChange = (event: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const value = event.target.value;
 
-  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
+    setDraft(value);
+
+    if (value.trim()) {
+      void keystroke().catch((error) => {
+        console.error("Error starting typing:", error);
+      });
+    } else {
+      void stop().catch((error) => {
+        console.error("Error stopping typing:", error);
+      });
+    }
+  };
+
+  const handleKeyDown = (
+    event: React.KeyboardEvent<HTMLTextAreaElement>,
+  ) => {
+    if (
+      event.key === "Enter" &&
+      !event.shiftKey &&
+      !event.nativeEvent.isComposing
+    ) {
+      event.preventDefault();
+      event.currentTarget.form?.requestSubmit();
+    }
+  };
+
+  const handleSubmit = async (
+    event: React.FormEvent<HTMLFormElement>,
+  ) => {
+    event.preventDefault();
 
     const text = draft.trim();
+
     if (!text) return;
 
     setSendError(null);
@@ -227,260 +306,287 @@ export default function Chat({ roomCode, members }: ChatProps) {
           image: currentUser?.image ?? "",
         },
       });
-      console.log("✅ Chat: Ably sendMessage succeeded");
     } catch (error) {
-      console.error("❌ Chat: Ably sendMessage FAILED:", error);
+      console.error("Unable to send message:", error);
+
       setDraft(text);
       setSendError(
         error instanceof Error ? error.message : "Unable to send message.",
       );
+
       return;
     }
 
     void stop().catch((error) => {
-      console.error("Error stopping typing", error);
+      console.error("Error stopping typing:", error);
     });
 
-    // Send push notification to other room members (MUST run — don't block on FCM)
-    console.log("📤 Chat: about to send notification, currentUser.id:", currentUser?.id);
     if (currentUser?.id) {
-      // Fire notification immediately — do NOT await initFcm (it can hang on SW ready)
-      console.log("🔔 Sending push notification to room:", roomCode);
-      fetch("/api/send-notification", {
+      void fetch("/api/send-notification", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+        },
         body: JSON.stringify({
           roomCode,
           senderId: currentUser.id,
           title: currentUser.name ?? currentUser.email ?? "Someone",
           body: text,
         }),
-      })
-        .then((r) => {
-          console.log("🔔 Notification fetch response status:", r.status);
-          return r.json();
-        })
-        .then((data) => console.log("🔔 Notification API response:", data))
-        .catch((err) => console.error("❌ Notification fetch error:", err));
-
-      // FCM registration as fire-and-forget (don't block notification sending)
-      initFcm(currentUser.id).then((ok) => {
-        console.log("🔔 Chat: FCM registration result:", ok);
+      }).catch((error) => {
+        console.error("Notification request failed:", error);
       });
-    } else {
-      console.warn("⚠️ Chat: skipping notification — no currentUser.id");
-    }
-  };
 
-  // Group consecutive messages from the same sender
-  const groups = messages
-    .slice()
-    .sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime())
-    .reduce<AblyMessage[][]>((acc, msg) => {
-      const last = acc[acc.length - 1];
-      if (last && last[0].clientId === msg.clientId) {
-        last.push(msg);
-      } else {
-        acc.push([msg]);
-      }
-      return acc;
-    }, []);
-
-  // current typing...
-  const typingUsers = Array.from(currentTypers)
-    .filter((typer) => typer.clientId !== currentUser?.id)
-    .map((typer) => {
-      const member = members.find(
-        (item) => item.userId === typer.clientId,
-      )?.user;
-
-      return member?.name ?? member?.email ?? typer.clientId;
-    });
-
-  function getTypingText(name: string, length: ReplyLength) {
-    if (!length) return null;
-    const labels = {
-      "very-short": "a quick reply",
-      short: "a short reply",
-      medium: "a medium reply",
-      long: "a long reply",
-    };
-    return `${name} is writing ${labels[length]}…`;
-  }
-
-  const typingText =
-    typingUsers.length === 1
-      ? getTypingText(typingUsers[0], getReplyLength(draft))
-      : typingUsers.length === 2
-        ? `${typingUsers[0]} and ${typingUsers[1]} are typing...`
-        : typingUsers.length > 2
-          ? `${typingUsers[0]} and ${typingUsers.length - 1} others are typing...`
-          : null;
-
-  const handleChange = (
-    e: React.ChangeEvent<HTMLTextAreaElement>,
-  ) => {
-    const newValue = e.target.value;
-
-    setDraft(newValue);
-
-    if (newValue.trim().length > 0) {
-      void keystroke().catch((error) => {
-        console.error("Error starting typing", error);
-      });
-    } else {
-      void stop().catch((error) => {
-        console.error("Error stopping typing", error);
-      });
+      void initFcm(currentUser.id);
     }
   };
 
   return (
-    <div className="mx-auto flex min-h-0 w-full max-w-5xl flex-1 flex-col">
-      <ScrollArea className="min-h-0 flex-1">
-        <div className="flex flex-col gap-3 px-4 py-4">
-          {/* Sentinel: when this scrolls into view, load older messages */}
-          <div ref={sentinelRef} className="h-1" />
+    <div className="mx-auto flex h-full min-h-0 w-full min-w-0 max-w-5xl flex-1 flex-col overflow-hidden bg-background">
+      <ScrollArea
+        className="
+          min-h-0 min-w-0 flex-1 overflow-hidden
+          [&_[data-radix-scroll-area-viewport]]:overflow-x-hidden
+          [&_[data-radix-scroll-area-viewport]>div]:!block
+          [&_[data-radix-scroll-area-viewport]>div]:!w-full
+          [&_[data-radix-scroll-area-viewport]>div]:!min-w-0
+        "
+      >
+        <div
+          role="log"
+          aria-live="polite"
+          aria-label="Chat messages"
+          className="mx-auto flex w-full min-w-0 flex-col gap-5 px-3 py-4 sm:px-5 sm:py-6"
+        >
+          <div ref={sentinelRef} className="h-px w-full" />
+
           {loadingHistory && (
-            <p className="text-center text-xs text-muted-foreground py-2">
-              Loading older messages…
-            </p>
+            <div className="flex w-full justify-center py-2">
+              <span className="rounded-full bg-muted px-3 py-1 text-xs text-muted-foreground">
+                Loading older messages…
+              </span>
+            </div>
           )}
-          {groups.map((group) => {
-            const senderId = group[0].clientId;
-            const sender = members.find((m) => m.userId === senderId)?.user;
+
+          {sortedMessages.map((message) => {
+            const senderId = message.clientId;
+            const sender = members.find(
+              (member) => member.userId === senderId,
+            )?.user;
+            const metadata = getMessageMetadata(message);
             const isMe = senderId === currentUser?.id;
-            const senderName = sender?.name ?? sender?.email ?? senderId;
-            const senderImage = isMe ? currentUser?.image : sender?.image;
+            const isDeleted =
+              message.action === ChatMessageAction.MessageDelete;
+
+            const senderName = isMe
+              ? currentUser?.name ??
+              currentUser?.email ??
+              metadata.displayName ??
+              "You"
+              : sender?.name ??
+              sender?.email ??
+              metadata.displayName ??
+              senderId ??
+              "Unknown user";
+
+            const senderImage = isMe
+              ? currentUser?.image ?? metadata.image
+              : sender?.image ?? metadata.image;
+
+            const bubble = (
+              <div
+                className={[
+                  "w-fit max-w-full overflow-hidden px-4 py-2.5 shadow-sm",
+                  "ring-1 ring-inset ring-black/5 dark:ring-white/5",
+                  isDeleted
+                    ? "rounded-2xl bg-muted/60 text-muted-foreground"
+                    : isMe
+                      ? "rounded-2xl rounded-br-md bg-primary text-primary-foreground"
+                      : "rounded-2xl rounded-bl-md bg-muted text-foreground",
+                  !isDeleted && isMe ? "cursor-context-menu" : "",
+                ].join(" ")}
+              >
+                <p
+                  className={[
+                    "max-w-full whitespace-pre-wrap text-sm leading-6",
+                    "break-words [overflow-wrap:anywhere]",
+                    isDeleted ? "select-none italic opacity-70" : "",
+                  ].join(" ")}
+                >
+                  {isDeleted
+                    ? `Message deleted by ${senderName}`
+                    : message.text}
+                </p>
+              </div>
+            );
 
             return (
-              <MessageGroup key={group[0].serial}>
-                {group.map((msg, idx) => {
-                  const isDeleted = msg.action === ChatMessageAction.MessageDelete;
+              <article
+                key={message.serial}
+                className={[
+                  "flex w-full min-w-0",
+                  isMe ? "justify-end" : "justify-start",
+                ].join(" ")}
+              >
+                <div
+                  className={[
+                    "flex min-w-0 max-w-[88%] flex-col gap-1.5",
+                    "sm:max-w-[78%] md:max-w-[72%] lg:max-w-[68%]",
+                    isMe ? "items-end" : "items-start",
+                  ].join(" ")}
+                >
+                  <div
+                    className={[
+                      "flex max-w-full min-w-0 items-center gap-2 px-1",
+                      isMe ? "flex-row-reverse" : "flex-row",
+                    ].join(" ")}
+                  >
+                    <Avatar className="size-7 shrink-0 border border-border/70">
+                      <AvatarImage
+                        src={senderImage ?? undefined}
+                        alt={senderName}
+                      />
+                      <AvatarFallback className="bg-muted text-[10px] font-semibold text-muted-foreground">
+                        {getInitials(senderName)}
+                      </AvatarFallback>
+                    </Avatar>
 
-                  return (
-                    <Message key={msg.serial} align={isMe ? "end" : "start"}>
-                      <MessageContent>
-                        {idx === 0 && (
-                          <MessageHeader>
-                            <Avatar className="size-6 mr-2">
-                              <AvatarImage src={senderImage ?? undefined} alt={senderName} />
-                              <AvatarFallback>
-                                {getInitials(senderName)}
-                              </AvatarFallback>
-                            </Avatar>
-                            <span>{senderName}</span>
-                          </MessageHeader>
-                        )}
-                        {isDeleted ? (
-                          <Bubble
-                            variant={isMe ? "tinted" : "muted"}
-                            align={isMe ? "end" : "start"}
-                          >
-                            <BubbleContent className="italic text-muted-foreground/50 select-none text-xs">
-                              message deleted by {senderName}
-                            </BubbleContent>
-                          </Bubble>
-                        ) : !isMe ? (
-                          <Bubble variant="muted" align="start">
-                            <BubbleContent className="whitespace-pre-wrap">
-                              {msg.text}
-                            </BubbleContent>
-                          </Bubble>
-                        ) : (
-                          <ContextMenu>
-                            <ContextMenuTrigger asChild>
-                              <Bubble
-                                variant="tinted"
-                                align="end"
-                                className="cursor-context-menu"
-                              >
-                                <BubbleContent className="whitespace-pre-wrap">
-                                  {msg.text}
-                                </BubbleContent>
-                              </Bubble>
-                            </ContextMenuTrigger>
-                            <ContextMenuContent>
-                              <ContextMenuItem
-                                onClick={() => handleCopyMessage(msg)}
-                              >
-                                <Copy className="size-3.5" />
-                                Copy
-                              </ContextMenuItem>
-                              <ContextMenuItem
-                                onClick={() => handleEditMessage(msg)}
-                              >
-                                <Pencil className="size-3.5" />
-                                Edit
-                              </ContextMenuItem>
-                              <ContextMenuSeparator />
-                              <ContextMenuItem
-                                variant="destructive"
-                                onClick={() => handleDeleteMessage(msg)}
-                              >
-                                <Trash2 className="size-3.5" />
-                                Delete
-                              </ContextMenuItem>
-                            </ContextMenuContent>
-                          </ContextMenu>
-                        )}
-                        <MessageFooter>
-                        <time dateTime={msg.timestamp.toISOString()}>
-                          {formatTime(msg.timestamp)}
-                        </time>
-                      </MessageFooter>
-                    </MessageContent>
-                  </Message>
-                )})}
-              </MessageGroup>
+                    <div
+                      className={[
+                        "flex min-w-0 items-center gap-2 text-xs",
+                        isMe ? "flex-row-reverse" : "flex-row",
+                      ].join(" ")}
+                    >
+                      <span className="min-w-0 truncate font-semibold text-foreground">
+                        {senderName}
+                      </span>
+
+                      <span
+                        aria-hidden="true"
+                        className="shrink-0 text-border"
+                      >
+                        |
+                      </span>
+
+                      <time
+                        dateTime={message.timestamp.toISOString()}
+                        className="shrink-0 whitespace-nowrap text-[11px] text-muted-foreground"
+                      >
+                        {formatTime(message.timestamp)}
+                      </time>
+                    </div>
+                  </div>
+
+                  {!isDeleted && isMe ? (
+                    <ContextMenu>
+                      <ContextMenuTrigger asChild>
+                        {bubble}
+                      </ContextMenuTrigger>
+
+                      <ContextMenuContent className="w-40">
+                        <ContextMenuItem
+                          onClick={() => handleCopyMessage(message)}
+                        >
+                          <Copy className="mr-2 size-4" />
+                          Copy
+                        </ContextMenuItem>
+
+                        <ContextMenuItem
+                          onClick={() => handleEditMessage(message)}
+                        >
+                          <Pencil className="mr-2 size-4" />
+                          Edit
+                        </ContextMenuItem>
+
+                        <ContextMenuSeparator />
+
+                        <ContextMenuItem
+                          variant="destructive"
+                          onClick={() => handleDeleteMessage(message)}
+                        >
+                          <Trash2 className="mr-2 size-4" />
+                          Delete
+                        </ContextMenuItem>
+                      </ContextMenuContent>
+                    </ContextMenu>
+                  ) : (
+                    bubble
+                  )}
+                </div>
+              </article>
             );
           })}
         </div>
       </ScrollArea>
 
-      {sendError && (
-        <p className="px-4 pb-2 text-xs text-destructive">{sendError}</p>
-      )}
-
-      {/* <div className="min-h-6 px-4 pb-1">
-        {typingText && (
-          <p className="text-sm text-muted-foreground">
-            {typingText}
+      <div className="shrink-0">
+        {sendError && (
+          <p
+            role="alert"
+            className="px-4 pb-2 text-xs font-medium text-destructive"
+          >
+            {sendError}
           </p>
         )}
-      </div> */}
-      <Marker role="status" className="p-4">
-        <MarkerContent className="shimmer">
-          {typingText && (
-            <p className="text-xs text-muted-foreground">
+
+        {typingText && (
+          <div
+            role="status"
+            aria-live="polite"
+            className="px-4 pb-2 text-xs text-muted-foreground"
+          >
+            <span className="inline-flex items-center gap-2 rounded-full bg-muted/70 px-3 py-1.5">
+              <span className="flex items-center gap-1">
+                <span className="size-1 animate-bounce rounded-full bg-muted-foreground [animation-delay:-0.3s]" />
+                <span className="size-1 animate-bounce rounded-full bg-muted-foreground [animation-delay:-0.15s]" />
+                <span className="size-1 animate-bounce rounded-full bg-muted-foreground" />
+              </span>
               {typingText}
-            </p>
-          )}
-        </MarkerContent>
-      </Marker>
-      <form
-        onSubmit={handleSubmit}
-        className="sticky bottom-0 border-t px-4 py-3"
-      >
-        <div className="mx-auto flex w-full max-w-5xl items-end gap-2">
-          <Textarea
-            ref={textareaRef}
-            value={draft}
-            onChange={handleChange}
-            onBlur={() => {
-              void stop().catch((error) => {
-                console.error("Error stopping typing", error);
-              });
-            }}
-            rows={1}
-            placeholder="Type something..."
-            className="min-h-11 resize-none rounded-xl"
-          />
-          <Button type="submit" size="icon-lg" disabled={!draft.trim()}>
-            <Send />
-          </Button>
-        </div>
-      </form>
+            </span>
+          </div>
+        )}
+
+        <form
+          onSubmit={handleSubmit}
+          className="border-t border-border/70 bg-background/95 px-3 py-3 backdrop-blur supports-[backdrop-filter]:bg-background/80 sm:px-4"
+        >
+          <div className="mx-auto flex w-full min-w-0 items-end gap-2">
+            <Textarea
+              ref={textareaRef}
+              value={draft}
+              rows={1}
+              placeholder="Type something…"
+              aria-label="Message"
+              onChange={handleChange}
+              onKeyDown={handleKeyDown}
+              onBlur={() => {
+                void stop().catch((error) => {
+                  console.error("Error stopping typing:", error);
+                });
+              }}
+              className="
+                max-h-40 min-h-11 min-w-0 flex-1 resize-none overflow-y-auto
+                rounded-2xl border-border bg-muted/40 px-4 py-3 text-sm
+                leading-5 shadow-none focus-visible:ring-1
+              "
+            />
+
+            <Button
+              type="submit"
+              size="icon"
+              disabled={!draft.trim()}
+              aria-label="Send message"
+              className="size-11 shrink-0 rounded-full"
+            >
+              <Send className="size-4" />
+            </Button>
+          </div>
+
+          <p className="mt-1.5 hidden px-2 text-[10px] text-muted-foreground sm:block">
+            Press Enter to send · Shift + Enter for a new line
+          </p>
+        </form>
+      </div>
     </div>
   );
 }

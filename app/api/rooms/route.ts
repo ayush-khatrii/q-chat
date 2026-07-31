@@ -73,7 +73,6 @@ export async function GET() {
       roomMembers: {
         some: {
           userId: user.id,
-          status: "APPROVED",
         },
       },
     },
@@ -89,13 +88,10 @@ export async function GET() {
       updatedAt: true,
       _count: {
         select: {
-          roomMembers: {
-            where: { status: "APPROVED" },
-          },
+          roomMembers: true,
         },
       },
       roomMembers: {
-        where: { status: "APPROVED" },
         orderBy: {
           joinedAt: "asc",
         },
@@ -174,7 +170,6 @@ export async function POST(request: Request) {
           roomMembers: {
             create: {
               userId: user.id,
-              status: "APPROVED",
             },
           },
         },
@@ -187,13 +182,10 @@ export async function POST(request: Request) {
           updatedAt: true,
           _count: {
             select: {
-              roomMembers: {
-                where: { status: "APPROVED" },
-              },
+              roomMembers: true,
             },
           },
           roomMembers: {
-            where: { status: "APPROVED" },
             select: {
               id: true,
               userId: true,

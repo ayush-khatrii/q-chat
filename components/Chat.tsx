@@ -43,16 +43,16 @@ type MessageGroup = {
   messages: AblyMessage[];
 };
 
-function getInitials(name: string): string {
-  const initials = name
-    .split(/\s|@/)
-    .filter(Boolean)
-    .map((part) => part[0])
-    .join("")
-    .toUpperCase()
-    .slice(0, 2);
-
-  return initials || "?";
+function getInitials(name: string) {
+  return (
+    name
+      .split(/\s|@/)
+      .filter(Boolean)
+      .map((part) => part[0])
+      .join("")
+      .toUpperCase()
+      .slice(0, 2) || "?"
+  );
 }
 
 function getMessageMetadata(message: AblyMessage): MessageMetadata {
@@ -71,7 +71,7 @@ function getMessageMetadata(message: AblyMessage): MessageMetadata {
   };
 }
 
-function formatTime(value: Date): string {
+function formatTime(value: Date) {
   return new Intl.DateTimeFormat("en-IN", {
     day: "numeric",
     month: "short",
@@ -138,7 +138,7 @@ export default function Chat({ roomCode, members }: ChatProps) {
         historyPageRef.current = page;
       })
       .catch((error) => {
-        console.error("Error loading message history:", error);
+        console.error("Error loading history:", error);
       })
       .finally(() => {
         setLoadingHistory(false);
@@ -166,10 +166,8 @@ export default function Chat({ roomCode, members }: ChatProps) {
   }, [hasMore, loadingHistory]);
 
   useEffect(() => {
-    const userId = currentUser?.id;
-
-    if (userId) {
-      void initFcm(userId);
+    if (currentUser?.id) {
+      void initFcm(currentUser.id);
     }
   }, [currentUser?.id]);
 
@@ -210,16 +208,12 @@ export default function Chat({ roomCode, members }: ChatProps) {
     [messages],
   );
 
-  /*
-   * Consecutive messages from the same client are combined into one group.
-   * A new group is created only when the sender changes.
-   */
   const messageGroups = useMemo<MessageGroup[]>(() => {
     return sortedMessages.reduce<MessageGroup[]>((groups, message) => {
-      const lastGroup = groups[groups.length - 1];
+      const previousGroup = groups[groups.length - 1];
 
-      if (lastGroup && lastGroup.senderId === message.clientId) {
-        lastGroup.messages.push(message);
+      if (previousGroup && previousGroup.senderId === message.clientId) {
+        previousGroup.messages.push(message);
       } else {
         groups.push({
           senderId: message.clientId,
@@ -254,6 +248,15 @@ export default function Chat({ roomCode, members }: ChatProps) {
           ? `${typingUsers[0]} and ${typingUsers.length - 1} others are typing…`
           : null;
 
+  const handleCopyMessage = useCallback(async (message: AblyMessage) => {
+    try {
+      await navigator.clipboard.writeText(message.text);
+      toast.success("Copied to clipboard");
+    } catch {
+      toast.error("Failed to copy message");
+    }
+  }, []);
+
   const handleDeleteMessage = useCallback(
     async (message: AblyMessage) => {
       try {
@@ -270,17 +273,8 @@ export default function Chat({ roomCode, members }: ChatProps) {
     [deleteMessage],
   );
 
-  const handleEditMessage = useCallback((_message: AblyMessage) => {
+  const handleEditMessage = useCallback(() => {
     toast.info("Edit feature coming soon!");
-  }, []);
-
-  const handleCopyMessage = useCallback(async (message: AblyMessage) => {
-    try {
-      await navigator.clipboard.writeText(message.text);
-      toast.success("Copied to clipboard");
-    } catch {
-      toast.error("Failed to copy message");
-    }
   }, []);
 
   const handleChange = (event: React.ChangeEvent<HTMLTextAreaElement>) => {
@@ -289,13 +283,9 @@ export default function Chat({ roomCode, members }: ChatProps) {
     setDraft(value);
 
     if (value.trim()) {
-      void keystroke().catch((error) => {
-        console.error("Error starting typing:", error);
-      });
+      void keystroke().catch(console.error);
     } else {
-      void stop().catch((error) => {
-        console.error("Error stopping typing:", error);
-      });
+      void stop().catch(console.error);
     }
   };
 
@@ -321,8 +311,8 @@ export default function Chat({ roomCode, members }: ChatProps) {
 
     if (!text) return;
 
-    setSendError(null);
     setDraft("");
+    setSendError(null);
 
     try {
       await sendMessage({
@@ -333,19 +323,14 @@ export default function Chat({ roomCode, members }: ChatProps) {
         },
       });
     } catch (error) {
-      console.error("Unable to send message:", error);
-
       setDraft(text);
       setSendError(
         error instanceof Error ? error.message : "Unable to send message.",
       );
-
       return;
     }
 
-    void stop().catch((error) => {
-      console.error("Error stopping typing:", error);
-    });
+    void stop().catch(console.error);
 
     if (currentUser?.id) {
       void fetch("/api/send-notification", {
@@ -359,16 +344,14 @@ export default function Chat({ roomCode, members }: ChatProps) {
           title: currentUser.name ?? currentUser.email ?? "Someone",
           body: text,
         }),
-      }).catch((error) => {
-        console.error("Notification request failed:", error);
-      });
+      }).catch(console.error);
 
       void initFcm(currentUser.id);
     }
   };
 
   return (
-    <div className="mx-auto flex h-full min-h-0 w-full min-w-0 max-w-5xl flex-1 flex-col overflow-hidden bg-background">
+    <div className="flex h-full min-h-0 w-full min-w-0 flex-1 flex-col overflow-hidden bg-background">
       <ScrollArea
         className="
           min-h-0 min-w-0 flex-1 overflow-hidden
@@ -381,13 +364,12 @@ export default function Chat({ roomCode, members }: ChatProps) {
         <div
           role="log"
           aria-live="polite"
-          aria-label="Chat messages"
-          className="mx-auto flex w-full min-w-0 flex-col gap-6 px-3 py-4 sm:px-5 sm:py-6"
+          className="flex w-full min-w-0 flex-col gap-6 px-3 py-4 sm:px-5 sm:py-6"
         >
           <div ref={sentinelRef} className="h-px w-full" />
 
           {loadingHistory && (
-            <div className="flex w-full justify-center py-2">
+            <div className="flex justify-center py-2">
               <span className="rounded-full bg-muted px-3 py-1 text-xs text-muted-foreground">
                 Loading older messages…
               </span>
@@ -430,56 +412,46 @@ export default function Chat({ roomCode, members }: ChatProps) {
               >
                 <div
                   className={[
-                    "flex min-w-0 max-w-[88%] flex-col gap-2",
-                    "sm:max-w-[78%] md:max-w-[72%] lg:max-w-[68%]",
+                    "flex w-full min-w-0 flex-col gap-2",
+                    "max-w-[88%] sm:max-w-[78%] md:max-w-[72%] lg:max-w-[68%]",
                     isMe ? "items-end" : "items-start",
                   ].join(" ")}
                 >
-                  {/* Sender identity is rendered once per group */}
                   <div
                     className={[
                       "flex max-w-full min-w-0 items-center gap-2 px-1",
                       isMe ? "flex-row-reverse" : "flex-row",
                     ].join(" ")}
                   >
-                    <Avatar className="size-7 shrink-0 border border-border/70">
+                    {/* <Avatar className="size:4 sm:size-7 shrink-0">
                       <AvatarImage
                         src={senderImage ?? undefined}
                         alt={senderName}
                       />
-                      <AvatarFallback className="bg-muted text-[10px] font-semibold text-muted-foreground">
+                      <AvatarFallback className="bg-muted text-[10px] font-semibold">
                         {getInitials(senderName)}
                       </AvatarFallback>
-                    </Avatar>
+                    </Avatar> */}
 
-                    <div
-                      className="flex min-w-0 items-center gap-2 text-xs"
-                    >
-                      <span className="min-w-0 truncate font-semibold text-foreground">
+                    <div className="flex min-w-0 max-w-full items-center gap-2 text-[10px] sm:text-xs">
+                      <span className="min-w-0 truncate font-semibold">
                         {senderName}
                       </span>
 
-                      <span
-                        aria-hidden="true"
-                        className="shrink-0 text-border"
-                      >
-                        |
-                      </span>
+                      <span className="shrink-0 text-border">|</span>
 
                       <time
                         dateTime={lastMessage.timestamp.toISOString()}
-                        title={`From ${formatTime(firstMessage.timestamp)} to ${formatTime(lastMessage.timestamp)}`}
-                        className="shrink-0 whitespace-nowrap text-[11px] text-muted-foreground"
+                        className="shrink-0 whitespace-nowrap text-[10px] text-muted-foreground"
                       >
                         {formatTime(lastMessage.timestamp)}
                       </time>
                     </div>
                   </div>
 
-                  {/* Consecutive messages are rendered together */}
                   <div
                     className={[
-                      "flex max-w-full flex-col gap-1",
+                      "flex w-full min-w-0 flex-col gap-1",
                       isMe ? "items-end" : "items-start",
                     ].join(" ")}
                   >
@@ -493,7 +465,8 @@ export default function Chat({ roomCode, members }: ChatProps) {
                       const bubble = (
                         <div
                           className={[
-                            "w-fit max-w-full overflow-hidden px-4 py-2.5 shadow-sm",
+                            "inline-block min-w-0 max-w-full overflow-hidden",
+                            "px-4 py-2.5 shadow-sm",
                             "ring-1 ring-inset ring-black/5 dark:ring-white/5",
                             isDeleted
                               ? "rounded-2xl bg-muted/60 text-muted-foreground"
@@ -514,13 +487,14 @@ export default function Chat({ roomCode, members }: ChatProps) {
                                 ]
                                   .filter(Boolean)
                                   .join(" "),
-                            !isDeleted && isMe ? "cursor-context-menu" : "",
                           ].join(" ")}
                         >
                           <p
                             className={[
-                              "max-w-full whitespace-pre-wrap text-sm leading-6",
-                              "break-words [overflow-wrap:anywhere]",
+                              "m-0 max-w-full whitespace-pre-wrap text-sm leading-6",
+                              "overflow-hidden break-words",
+                              "[overflow-wrap:anywhere]",
+                              "[word-break:break-word]",
                               isDeleted
                                 ? "select-none italic opacity-70"
                                 : "",
@@ -533,40 +507,46 @@ export default function Chat({ roomCode, members }: ChatProps) {
                         </div>
                       );
 
-                      return !isDeleted && isMe ? (
-                        <ContextMenu key={message.serial}>
-                          <ContextMenuTrigger asChild>
-                            {bubble}
-                          </ContextMenuTrigger>
+                      if (!isDeleted && isMe) {
+                        return (
+                          <ContextMenu key={message.serial}>
+                            <ContextMenuTrigger asChild>
+                              {bubble}
+                            </ContextMenuTrigger>
 
-                          <ContextMenuContent className="w-40">
-                            <ContextMenuItem
-                              onClick={() => handleCopyMessage(message)}
-                            >
-                              <Copy className="mr-2 size-4" />
-                              Copy
-                            </ContextMenuItem>
+                            <ContextMenuContent className="w-40">
+                              <ContextMenuItem
+                                onClick={() => handleCopyMessage(message)}
+                              >
+                                <Copy className="mr-2 size-4" />
+                                Copy
+                              </ContextMenuItem>
 
-                            <ContextMenuItem
-                              onClick={() => handleEditMessage(message)}
-                            >
-                              <Pencil className="mr-2 size-4" />
-                              Edit
-                            </ContextMenuItem>
+                              <ContextMenuItem
+                                onClick={() => handleEditMessage()}
+                              >
+                                <Pencil className="mr-2 size-4" />
+                                Edit
+                              </ContextMenuItem>
 
-                            <ContextMenuSeparator />
+                              <ContextMenuSeparator />
 
-                            <ContextMenuItem
-                              variant="destructive"
-                              onClick={() => handleDeleteMessage(message)}
-                            >
-                              <Trash2 className="mr-2 size-4" />
-                              Delete
-                            </ContextMenuItem>
-                          </ContextMenuContent>
-                        </ContextMenu>
-                      ) : (
-                        <div key={message.serial}>{bubble}</div>
+                              <ContextMenuItem
+                                variant="destructive"
+                                onClick={() => handleDeleteMessage(message)}
+                              >
+                                <Trash2 className="mr-2 size-4" />
+                                Delete
+                              </ContextMenuItem>
+                            </ContextMenuContent>
+                          </ContextMenu>
+                        );
+                      }
+
+                      return (
+                        <div key={message.serial} className="min-w-0 max-w-full">
+                          {bubble}
+                        </div>
                       );
                     })}
                   </div>
@@ -579,53 +559,32 @@ export default function Chat({ roomCode, members }: ChatProps) {
 
       <div className="shrink-0">
         {sendError && (
-          <p
-            role="alert"
-            className="px-4 pb-2 text-xs font-medium text-destructive"
-          >
-            {sendError}
-          </p>
+          <p className="px-4 pb-2 text-xs text-destructive">{sendError}</p>
         )}
 
         {typingText && (
-          <div
-            role="status"
-            aria-live="polite"
-            className="px-4 pb-2 text-xs text-muted-foreground"
-          >
-            <span className="inline-flex items-center gap-2 rounded-full bg-muted/70 px-3 py-1.5">
-              <span className="flex items-center gap-1">
-                <span className="size-1 animate-bounce rounded-full bg-muted-foreground [animation-delay:-0.3s]" />
-                <span className="size-1 animate-bounce rounded-full bg-muted-foreground [animation-delay:-0.15s]" />
-                <span className="size-1 animate-bounce rounded-full bg-muted-foreground" />
-              </span>
-              {typingText}
-            </span>
+          <div className="px-4 pb-2 text-xs text-muted-foreground">
+            {typingText}
           </div>
         )}
 
         <form
           onSubmit={handleSubmit}
-          className="border-t border-border/70 bg-background/95 px-3 py-3 backdrop-blur supports-[backdrop-filter]:bg-background/80 sm:px-4"
+          className="border-t border-border/70 bg-background/95 px-3 py-3 backdrop-blur sm:px-4"
         >
-          <div className="mx-auto flex w-full min-w-0 items-end gap-2">
+          <div className="flex w-full min-w-0 items-end gap-2">
             <Textarea
               ref={textareaRef}
               value={draft}
               rows={1}
               placeholder="Type something…"
-              aria-label="Message"
               onChange={handleChange}
               onKeyDown={handleKeyDown}
-              onBlur={() => {
-                void stop().catch((error) => {
-                  console.error("Error stopping typing:", error);
-                });
-              }}
+              onBlur={() => void stop().catch(console.error)}
               className="
-                max-h-40 min-h-11 min-w-0 flex-1 resize-none overflow-y-auto
-                rounded-2xl border-border bg-muted/40 px-4 py-3 text-sm
-                leading-5 shadow-none focus-visible:ring-1
+                min-h-11 min-w-0 flex-1 resize-none
+                rounded-2xl border-border bg-muted/40 px-4 py-3
+                text-sm leading-5 shadow-none focus-visible:ring-1
               "
             />
 
@@ -639,10 +598,6 @@ export default function Chat({ roomCode, members }: ChatProps) {
               <Send className="size-4" />
             </Button>
           </div>
-
-          <p className="mt-1.5 hidden px-2 text-[10px] text-muted-foreground sm:block">
-            Press Enter to send · Shift + Enter for a new line
-          </p>
         </form>
       </div>
     </div>

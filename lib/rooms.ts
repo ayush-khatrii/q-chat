@@ -6,6 +6,35 @@ export const MAX_CUSTOM_ROOM_CODE_LENGTH = 20;
 export const MAX_ROOM_MEMBERS = 2;
 const ROOM_CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 
+export const roomThemeSchema = z.object({
+  surface: z.string().regex(/^#[0-9a-f]{6}$/i),
+  outgoingBubble: z.string().regex(/^#[0-9a-f]{6}$/i),
+  outgoingText: z.string().regex(/^#[0-9a-f]{6}$/i),
+  incomingBubble: z.string().regex(/^#[0-9a-f]{6}$/i),
+  incomingText: z.string().regex(/^#[0-9a-f]{6}$/i),
+  pattern: z.enum(["none", "hearts", "grid", "lines", "dots"]),
+  patternColor: z.string().regex(/^#[0-9a-f]{6}$/i),
+  patternOpacity: z.enum(["subtle", "soft", "visible"]),
+});
+
+export type RoomTheme = z.infer<typeof roomThemeSchema>;
+
+export const DEFAULT_ROOM_THEME: RoomTheme = {
+  surface: "#0b141a",
+  outgoingBubble: "#005c4b",
+  outgoingText: "#e9edef",
+  incomingBubble: "#202c33",
+  incomingText: "#e9edef",
+  pattern: "none",
+  patternColor: "#f472b6",
+  patternOpacity: "subtle",
+};
+
+export function normalizeRoomTheme(value: unknown): RoomTheme {
+  const parsed = roomThemeSchema.safeParse(value);
+  return parsed.success ? parsed.data : DEFAULT_ROOM_THEME;
+}
+
 export function normalizeCustomRoomCode(code?: string | null) {
   const trimmedCode = code?.trim();
 
@@ -82,6 +111,7 @@ export type UserRoom = {
   isOwner: boolean;
   memberCount: number;
   members: UserRoomMember[];
+  theme: RoomTheme;
   createdAt: string;
   updatedAt: string;
 };

@@ -1,12 +1,13 @@
 import "server-only";
 
 import prisma from "@/lib/prisma";
-import type { UserRoom } from "@/lib/rooms";
+import { normalizeRoomTheme, type UserRoom } from "@/lib/rooms";
 
 type RoomRecord = {
   id: string;
   name: string;
   code: string;
+  theme: unknown;
   ownerId: string;
   createdAt: Date;
   updatedAt: Date;
@@ -32,6 +33,7 @@ export function serializeRoom(room: RoomRecord, userId: string): UserRoom {
     id: room.id,
     name: room.name,
     code: room.code,
+    theme: normalizeRoomTheme(room.theme),
     ownerId: room.ownerId,
     isOwner: room.ownerId === userId,
     memberCount: room._count.roomMembers,
@@ -56,6 +58,7 @@ export async function getRoomForMember(code: string, userId: string) {
       id: true,
       name: true,
       code: true,
+      theme: true,
       ownerId: true,
       createdAt: true,
       updatedAt: true,

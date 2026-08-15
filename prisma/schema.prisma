@@ -30,6 +30,7 @@ model Room {
   id      String @id @default(cuid())
   code    String @unique
   name    String
+  theme   Json?
   ownerId String
   owner   User   @relation("RoomOwner", fields: [ownerId], references: [id])
 

@@ -5,6 +5,7 @@ import prisma from "@/lib/prisma";
 import {
   createRoomSchema,
   generateRoomCode,
+  normalizeRoomTheme,
   normalizeCustomRoomCode,
 } from "@/lib/rooms";
 
@@ -49,6 +50,7 @@ function serializeRoom(
     id: room.id,
     name: room.name,
     code: room.code,
+    theme: normalizeRoomTheme(room.theme),
     ownerId: room.ownerId,
     isOwner: room.ownerId === userId,
     memberCount: room._count.roomMembers,
@@ -83,6 +85,7 @@ export async function GET() {
       id: true,
       name: true,
       code: true,
+      theme: true,
       ownerId: true,
       createdAt: true,
       updatedAt: true,
@@ -158,6 +161,7 @@ export async function POST(request: Request) {
           id: true,
           name: true,
           code: true,
+          theme: true,
           ownerId: true,
           createdAt: true,
           updatedAt: true,

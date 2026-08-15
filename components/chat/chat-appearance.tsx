@@ -1,159 +1,140 @@
 "use client";
 
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  createContext,
-  useCallback,
-  useContext,
-  useEffect,
-  useMemo,
-  useState,
-  type ReactNode,
-} from "react";
-import { authClient } from "@/lib/auth-client";
+  DEFAULT_ROOM_THEME,
+  normalizeRoomTheme,
+  type RoomTheme,
+} from "@/lib/rooms";
 
-export type ChatAppearance = {
-  surface: string;
-  outgoingBubble: string;
-  outgoingText: string;
-  incomingBubble: string;
-  incomingText: string;
-};
-
-export const CHAT_APPEARANCE_PRESETS = {
-  light: {
+export const ROOM_THEME_PRESETS: Record<string, RoomTheme> = {
+  midnight: DEFAULT_ROOM_THEME,
+  hearts: {
+    surface: "#09070a",
+    outgoingBubble: "#9d174d",
+    outgoingText: "#fff1f2",
+    incomingBubble: "#2a1722",
+    incomingText: "#fce7f3",
+    pattern: "hearts",
+    patternColor: "#f472b6",
+    patternOpacity: "soft",
+  },
+  paper: {
     surface: "#efeae2",
     outgoingBubble: "#d9fdd3",
     outgoingText: "#111b21",
     incomingBubble: "#ffffff",
     incomingText: "#111b21",
+    pattern: "lines",
+    patternColor: "#64748b",
+    patternOpacity: "subtle",
   },
-  dark: {
-    surface: "#0b141a",
-    outgoingBubble: "#005c4b",
-    outgoingText: "#e9edef",
-    incomingBubble: "#202c33",
-    incomingText: "#e9edef",
+  ocean: {
+    surface: "#071b24",
+    outgoingBubble: "#075e54",
+    outgoingText: "#ecfeff",
+    incomingBubble: "#12313d",
+    incomingText: "#ecfeff",
+    pattern: "dots",
+    patternColor: "#22d3ee",
+    patternOpacity: "subtle",
   },
-} satisfies Record<string, ChatAppearance>;
-
-type ChatAppearanceContextValue = {
-  appearance: ChatAppearance;
-  updateAppearance: (updates: Partial<ChatAppearance>) => void;
-  applyPreset: (preset: ChatAppearance) => void;
-  resetAppearance: () => void;
 };
 
-const ChatAppearanceContext = createContext<ChatAppearanceContextValue | null>(
-  null,
-);
+type ThemeResponse = { theme: RoomTheme; updatedAt: string };
 
-const CSS_VARIABLES: Record<keyof ChatAppearance, string> = {
-  surface: "--chat-surface",
-  outgoingBubble: "--chat-outgoing",
-  outgoingText: "--chat-outgoing-foreground",
-  incomingBubble: "--chat-incoming",
-  incomingText: "--chat-incoming-foreground",
-};
-
-function isChatAppearance(value: unknown): value is ChatAppearance {
-  if (!value || typeof value !== "object") return false;
-
-  return Object.keys(CSS_VARIABLES).every((key) => {
-    const color = (value as Record<string, unknown>)[key];
-    return typeof color === "string" && /^#[0-9a-f]{6}$/i.test(color);
+async function requestRoomTheme(roomId: string, theme?: RoomTheme) {
+  const response = await fetch(`/api/rooms/${roomId}/theme`, {
+    method: theme ? "PATCH" : "GET",
+    headers: theme ? { "Content-Type": "application/json" } : undefined,
+    credentials: "include",
+    body: theme ? JSON.stringify(theme) : undefined,
   });
-}
+  const payload = (await response.json().catch(() => null)) as
+    | ThemeResponse
+    | { error?: string }
+    | null;
 
-export function ChatAppearanceProvider({ children }: { children: ReactNode }) {
-  const { data: session } = authClient.useSession();
-  const userId = session?.user.id;
-  const [appearance, setAppearance] = useState<ChatAppearance>(
-    CHAT_APPEARANCE_PRESETS.dark,
-  );
-
-  useEffect(() => {
-    if (!userId) return;
-
-    const storageKey = `qchat:appearance:${userId}`;
-
-    try {
-      const stored = window.localStorage.getItem(storageKey);
-      const parsed = stored ? JSON.parse(stored) : null;
-
-      setAppearance(
-        isChatAppearance(parsed)
-          ? parsed
-          : document.documentElement.classList.contains("dark")
-            ? CHAT_APPEARANCE_PRESETS.dark
-            : CHAT_APPEARANCE_PRESETS.light,
-      );
-    } catch {
-      setAppearance(CHAT_APPEARANCE_PRESETS.dark);
-    }
-  }, [userId]);
-
-  useEffect(() => {
-    const root = document.documentElement;
-
-    for (const key of Object.keys(CSS_VARIABLES) as (keyof ChatAppearance)[]) {
-      root.style.setProperty(CSS_VARIABLES[key], appearance[key]);
-    }
-
-    if (userId) {
-      try {
-        window.localStorage.setItem(
-          `qchat:appearance:${userId}`,
-          JSON.stringify(appearance),
-        );
-      } catch {
-        // The live theme still works when storage is unavailable.
-      }
-    }
-
-    return () => {
-      for (const variable of Object.values(CSS_VARIABLES)) {
-        root.style.removeProperty(variable);
-      }
-    };
-  }, [appearance, userId]);
-
-  const updateAppearance = useCallback(
-    (updates: Partial<ChatAppearance>) => {
-      setAppearance((current) => ({ ...current, ...updates }));
-    },
-    [],
-  );
-
-  const applyPreset = useCallback((preset: ChatAppearance) => {
-    setAppearance(preset);
-  }, []);
-
-  const resetAppearance = useCallback(() => {
-    setAppearance(
-      document.documentElement.classList.contains("dark")
-        ? CHAT_APPEARANCE_PRESETS.dark
-        : CHAT_APPEARANCE_PRESETS.light,
+  if (!response.ok || !payload || !("theme" in payload)) {
+    throw new Error(
+      payload && "error" in payload && payload.error
+        ? payload.error
+        : `Unable to ${theme ? "save" : "load"} the room theme.`,
     );
-  }, []);
-
-  const value = useMemo(
-    () => ({ appearance, updateAppearance, applyPreset, resetAppearance }),
-    [appearance, applyPreset, resetAppearance, updateAppearance],
-  );
-
-  return (
-    <ChatAppearanceContext.Provider value={value}>
-      {children}
-    </ChatAppearanceContext.Provider>
-  );
-}
-
-export function useChatAppearance() {
-  const context = useContext(ChatAppearanceContext);
-
-  if (!context) {
-    throw new Error("useChatAppearance must be used inside ChatAppearanceProvider");
   }
 
-  return context;
+  return { ...payload, theme: normalizeRoomTheme(payload.theme) };
+}
+
+export function useRoomTheme(roomId: string, initialTheme?: RoomTheme) {
+  const queryClient = useQueryClient();
+  const queryKey = ["room-theme", roomId] as const;
+  const query = useQuery({
+    queryKey,
+    queryFn: () => requestRoomTheme(roomId),
+    initialData: initialTheme
+      ? { theme: initialTheme, updatedAt: "" }
+      : undefined,
+    staleTime: 5 * 60 * 1000,
+  });
+  const mutation = useMutation({
+    mutationFn: (theme: RoomTheme) => requestRoomTheme(roomId, theme),
+    onSuccess: (data) => queryClient.setQueryData(queryKey, data),
+  });
+
+  return {
+    theme: query.data?.theme ?? initialTheme ?? DEFAULT_ROOM_THEME,
+    isLoading: query.isLoading,
+    error: query.error,
+    saveTheme: mutation.mutateAsync,
+    isSaving: mutation.isPending,
+  };
+}
+
+const OPACITY_VALUES: Record<RoomTheme["patternOpacity"], number> = {
+  subtle: 0.045,
+  soft: 0.08,
+  visible: 0.14,
+};
+
+function hexToRgba(hex: string, opacity: number) {
+  const value = hex.replace("#", "");
+  const red = Number.parseInt(value.slice(0, 2), 16);
+  const green = Number.parseInt(value.slice(2, 4), 16);
+  const blue = Number.parseInt(value.slice(4, 6), 16);
+  return `rgba(${red}, ${green}, ${blue}, ${opacity})`;
+}
+
+export function getRoomThemeStyle(theme: RoomTheme): React.CSSProperties {
+  const patternColor = hexToRgba(
+    theme.patternColor,
+    OPACITY_VALUES[theme.patternOpacity],
+  );
+  let backgroundImage = "none";
+  let backgroundSize: string | undefined;
+
+  if (theme.pattern === "grid") {
+    backgroundImage = `linear-gradient(${patternColor} 1px, transparent 1px), linear-gradient(90deg, ${patternColor} 1px, transparent 1px)`;
+    backgroundSize = "32px 32px";
+  } else if (theme.pattern === "lines") {
+    backgroundImage = `repeating-linear-gradient(135deg, transparent 0 22px, ${patternColor} 22px 23px)`;
+  } else if (theme.pattern === "dots") {
+    backgroundImage = `radial-gradient(circle, ${patternColor} 1.5px, transparent 1.5px)`;
+    backgroundSize = "24px 24px";
+  } else if (theme.pattern === "hearts") {
+    const opacity = OPACITY_VALUES[theme.patternOpacity];
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="44" height="44" viewBox="0 0 44 44"><path fill="${theme.patternColor}" fill-opacity="${opacity}" d="M22 34C10 26 7 20 7 15a8 8 0 0 1 15-4 8 8 0 0 1 15 4c0 5-3 11-15 19Z"/></svg>`;
+    backgroundImage = `url("data:image/svg+xml,${encodeURIComponent(svg)}")`;
+    backgroundSize = "44px 44px";
+  }
+
+  return {
+    backgroundColor: theme.surface,
+    backgroundImage,
+    backgroundSize,
+    "--chat-outgoing": theme.outgoingBubble,
+    "--chat-outgoing-foreground": theme.outgoingText,
+    "--chat-incoming": theme.incomingBubble,
+    "--chat-incoming-foreground": theme.incomingText,
+  } as React.CSSProperties;
 }

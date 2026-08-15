@@ -27,11 +27,14 @@ import { useMessages, useTyping } from "@ably/chat/react";
 
 import { authClient } from "@/lib/auth-client";
 import { initFcm } from "@/lib/fcm";
-import type { UserRoomMember } from "@/lib/rooms";
+import { getRoomThemeStyle, useRoomTheme } from "@/components/chat/chat-appearance";
+import type { RoomTheme, UserRoomMember } from "@/lib/rooms";
 
 type ChatProps = {
+  roomId: string;
   roomCode: string;
   members: UserRoomMember[];
+  initialTheme: RoomTheme;
 };
 
 type MessageMetadata = {
@@ -80,9 +83,15 @@ function formatTime(value: Date) {
   }).format(value);
 }
 
-export default function Chat({ roomCode, members }: ChatProps) {
+export default function Chat({
+  roomId,
+  roomCode,
+  members,
+  initialTheme,
+}: ChatProps) {
   const { data: session } = authClient.useSession();
   const currentUser = session?.user;
+  const { theme } = useRoomTheme(roomId, initialTheme);
 
   const { currentTypers, keystroke, stop } = useTyping();
 
@@ -346,7 +355,10 @@ export default function Chat({ roomCode, members }: ChatProps) {
   };
 
   return (
-    <div className="mx-auto flex h-full min-h-0 w-full min-w-0 max-w-5xl flex-1 flex-col overflow-hidden bg-[var(--chat-surface,var(--background))]">
+    <div
+      className="flex h-full min-h-0 w-full min-w-0 flex-1 flex-col overflow-hidden"
+      style={getRoomThemeStyle(theme)}
+    >
       <ScrollArea
         className="
           min-h-0 min-w-0 flex-1 overflow-hidden
@@ -359,7 +371,7 @@ export default function Chat({ roomCode, members }: ChatProps) {
         <div
           role="log"
           aria-live="polite"
-          className="flex w-full min-w-0 flex-col gap-4 px-3 py-4 sm:px-5 sm:py-6"
+          className="mx-auto flex w-full max-w-5xl min-w-0 flex-col gap-4 px-3 py-4 sm:px-5 sm:py-6"
         >
           <div ref={sentinelRef} className="h-px w-full" />
 
@@ -484,7 +496,7 @@ export default function Chat({ roomCode, members }: ChatProps) {
                             dateTime={message.timestamp.toISOString()}
                             className={[
                               "mt-0.5 block whitespace-nowrap text-[9px] leading-none opacity-55",
-                              isMe ? "text-right" : "text-left",
+                              isMe ? "text-left" : "text-right",
                             ].join(" ")}
                           >
                             {formatTime(message.timestamp)}
@@ -555,9 +567,9 @@ export default function Chat({ roomCode, members }: ChatProps) {
 
         <form
           onSubmit={handleSubmit}
-          className="border-t border-border/70 bg-background/95 px-3 py-3 backdrop-blur sm:px-4"
+          className="border-t border-white/10 bg-black/15 px-3 py-3 backdrop-blur-md sm:px-4"
         >
-          <div className="flex w-full min-w-0 items-end gap-2">
+          <div className="mx-auto flex w-full max-w-5xl min-w-0 items-end gap-2">
             <Textarea
               ref={textareaRef}
               value={draft}

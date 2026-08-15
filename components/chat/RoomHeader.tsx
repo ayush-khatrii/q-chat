@@ -446,7 +446,7 @@ export default function RoomHeader({ room, members }: RoomHeaderProps) {
                   <MenuLink
                     icon={Palette}
                     label="Chat appearance"
-                    href="/appearance"
+                    href={`/appearance?room=${encodeURIComponent(currentRoom.code)}`}
                   />
                   <MenuButton icon={Languages} label="Language" />
                 </MenuSection>

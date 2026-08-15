@@ -107,6 +107,7 @@ export async function POST(request: Request) {
       id: true,
       name: true,
       code: true,
+      theme: true,
       ownerId: true,
       createdAt: true,
       updatedAt: true,

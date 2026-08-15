@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import NotificationInit from "@/components/NotificationInit";
 import SidebarLayout from "@/components/SidebarLayout";
 import { SidebarProvider } from "@/components/sidebar-context";
-import { ChatAppearanceProvider } from "@/components/chat/chat-appearance";
+import QueryProvider from "@/providers/QueryProvider";
 
 export default function AuthenticatedLayout({
   children,
@@ -10,13 +10,13 @@ export default function AuthenticatedLayout({
   children: ReactNode;
 }) {
   return (
-    <ChatAppearanceProvider>
+    <QueryProvider>
       <SidebarProvider>
         <NotificationInit />
         <main className="flex h-dvh flex-col">
           <SidebarLayout>{children}</SidebarLayout>
         </main>
       </SidebarProvider>
-    </ChatAppearanceProvider>
+    </QueryProvider>
   );
 }

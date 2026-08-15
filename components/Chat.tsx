@@ -495,7 +495,7 @@ export default function Chat({
                           <time
                             dateTime={message.timestamp.toISOString()}
                             className={[
-                              "mt-0.5 block whitespace-nowrap text-[9px] leading-none opacity-55",
+                              "my-2 px-1 block whitespace-nowrap text-[9px] leading-none opacity-55",
                               isMe ? "text-left" : "text-right",
                             ].join(" ")}
                           >

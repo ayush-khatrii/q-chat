@@ -39,6 +39,11 @@ type MessageMetadata = {
   image?: string;
 };
 
+type MessageGroup = {
+  senderId: string;
+  messages: AblyMessage[];
+};
+
 function getInitials(name: string) {
   return (
     name
@@ -69,12 +74,9 @@ function getMessageMetadata(message: AblyMessage): MessageMetadata {
 
 function formatTime(value: Date) {
   return new Intl.DateTimeFormat("en-IN", {
-    day: "numeric",
-    month: "short",
     hour: "numeric",
     minute: "2-digit",
     hour12: true,
-    timeZone: "Asia/Kolkata",
   }).format(value);
 }
 
@@ -204,6 +206,20 @@ export default function Chat({ roomCode, members }: ChatProps) {
     [messages],
   );
 
+  const messageGroups = useMemo<MessageGroup[]>(() => {
+    return sortedMessages.reduce<MessageGroup[]>((groups, message) => {
+      const latestGroup = groups[groups.length - 1];
+
+      if (latestGroup?.senderId === message.clientId) {
+        latestGroup.messages.push(message);
+      } else {
+        groups.push({ senderId: message.clientId, messages: [message] });
+      }
+
+      return groups;
+    }, []);
+  }, [sortedMessages]);
+
   const typingUsers = useMemo(
     () =>
       Array.from(currentTypers)
@@ -330,7 +346,7 @@ export default function Chat({ roomCode, members }: ChatProps) {
   };
 
   return (
-    <div className="mx-auto flex h-full min-h-0 w-full min-w-0 max-w-5xl flex-1 flex-col overflow-hidden bg-background">
+    <div className="mx-auto flex h-full min-h-0 w-full min-w-0 max-w-5xl flex-1 flex-col overflow-hidden bg-[var(--chat-surface,var(--background))]">
       <ScrollArea
         className="
           min-h-0 min-w-0 flex-1 overflow-hidden
@@ -343,7 +359,7 @@ export default function Chat({ roomCode, members }: ChatProps) {
         <div
           role="log"
           aria-live="polite"
-          className="flex w-full min-w-0 flex-col gap-5 px-3 py-4 sm:px-5 sm:py-6"
+          className="flex w-full min-w-0 flex-col gap-4 px-3 py-4 sm:px-5 sm:py-6"
         >
           <div ref={sentinelRef} className="h-px w-full" />
 
@@ -355,13 +371,14 @@ export default function Chat({ roomCode, members }: ChatProps) {
             </div>
           )}
 
-          {sortedMessages.map((message) => {
+          {messageGroups.map((group) => {
+            const firstMessage = group.messages[0];
             const sender = members.find(
-              (member) => member.userId === message.clientId,
+              (member) => member.userId === group.senderId,
             )?.user;
 
-            const metadata = getMessageMetadata(message);
-            const isMe = message.clientId === currentUser?.id;
+            const metadata = getMessageMetadata(firstMessage);
+            const isMe = group.senderId === currentUser?.id;
 
             const senderName = isMe
               ? currentUser?.name ??
@@ -371,7 +388,7 @@ export default function Chat({ roomCode, members }: ChatProps) {
               : sender?.name ??
               sender?.email ??
               metadata.displayName ??
-              message.clientId ??
+              group.senderId ??
               "Unknown user";
 
             const senderImage = isMe
@@ -380,7 +397,7 @@ export default function Chat({ roomCode, members }: ChatProps) {
 
             return (
               <article
-                key={message.serial}
+                key={`${group.senderId}-${firstMessage.serial}`}
                 className={[
                   "flex w-full min-w-0",
                   isMe ? "justify-end" : "justify-start",
@@ -388,8 +405,8 @@ export default function Chat({ roomCode, members }: ChatProps) {
               >
                 <div
                   className={[
-                    "flex min-w-0 flex-col gap-2",
-                    "max-w-[88%] sm:max-w-[78%] md:max-w-[72%] lg:max-w-[68%]",
+                    "flex min-w-0 flex-col gap-1.5",
+                    "max-w-[84%] sm:max-w-[72%] md:max-w-[64%] lg:max-w-[58%]",
                     isMe ? "items-end" : "items-start",
                   ].join(" ")}
                 >
@@ -416,21 +433,12 @@ export default function Chat({ roomCode, members }: ChatProps) {
                         </span>
                       ) : (
                         <Link
-                          href={`/users/${message.clientId}`}
+                          href={`/users/${group.senderId}`}
                           className="min-w-0 truncate font-semibold hover:text-primary hover:underline"
                         >
                           {senderName}
                         </Link>
                       )}
-
-                      <span className="shrink-0 text-border">|</span>
-
-                      <time
-                        dateTime={message.timestamp.toISOString()}
-                        className="shrink-0 whitespace-nowrap text-[10px] text-muted-foreground"
-                      >
-                        {formatTime(message.timestamp)}
-                      </time>
                     </div>
                   </div>
 
@@ -440,38 +448,26 @@ export default function Chat({ roomCode, members }: ChatProps) {
                       isMe ? "items-end" : "items-start",
                     ].join(" ")}
                   >
-                    {[message].map((message) => {
+                    {group.messages.map((message) => {
                       const isDeleted =
                         message.action === ChatMessageAction.MessageDelete;
 
                       const bubble = (
                         <div
                           className={[
-                            "inline-block min-w-0 max-w-full overflow-hidden",
-                            "px-4 py-2.5 shadow-sm",
+                            "inline-block min-w-0 max-w-full overflow-hidden rounded-2xl",
+                            "px-3 py-1.5 shadow-sm",
                             "ring-1 ring-inset ring-black/5 dark:ring-white/5",
                             isDeleted
                               ? "rounded-2xl bg-muted/60 text-muted-foreground"
                               : isMe
-                                ? [
-                                  "bg-primary text-primary-foreground",
-                                  "rounded-2xl",
-                                  "rounded-br-md",
-                                ]
-                                  .filter(Boolean)
-                                  .join(" ")
-                                : [
-                                  "bg-muted text-foreground",
-                                  "rounded-2xl",
-                                  "rounded-bl-md",
-                                ]
-                                  .filter(Boolean)
-                                  .join(" "),
+                                ? "bg-[var(--chat-outgoing,var(--primary))] text-[var(--chat-outgoing-foreground,var(--primary-foreground))]"
+                                : "bg-[var(--chat-incoming,var(--muted))] text-[var(--chat-incoming-foreground,var(--foreground))]",
                           ].join(" ")}
                         >
                           <p
                             className={[
-                              "m-0 max-w-full whitespace-pre-wrap text-sm leading-6",
+                              "m-0 max-w-full whitespace-pre-wrap text-[13px] leading-5",
                               "overflow-hidden break-words",
                               "[overflow-wrap:anywhere]",
                               "[word-break:break-word]",
@@ -484,6 +480,15 @@ export default function Chat({ roomCode, members }: ChatProps) {
                               ? `Message deleted by ${senderName}`
                               : message.text}
                           </p>
+                          <time
+                            dateTime={message.timestamp.toISOString()}
+                            className={[
+                              "mt-0.5 block whitespace-nowrap text-[9px] leading-none opacity-55",
+                              isMe ? "text-right" : "text-left",
+                            ].join(" ")}
+                          >
+                            {formatTime(message.timestamp)}
+                          </time>
                         </div>
                       );
 

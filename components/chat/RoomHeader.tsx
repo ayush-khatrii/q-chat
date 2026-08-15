@@ -265,14 +265,14 @@ export default function RoomHeader({ room, members }: RoomHeaderProps) {
           </SheetTrigger>
           <SheetContent
             side="right"
-            className="flex h-full w-[min(92vw,380px)] flex-col p-0"
+            className="flex h-full w-[min(94vw,400px)] flex-col border-l bg-background/98 p-0 backdrop-blur-xl"
           >
-            <div className="flex shrink-0 items-center gap-3 border-b px-5 py-4">
-              <div className="flex size-9 shrink-0 items-center justify-center rounded-md bg-primary text-primary-foreground">
+            <div className="flex shrink-0 items-center gap-3 border-b bg-gradient-to-br from-primary/10 via-background to-background px-5 py-5">
+              <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-sm">
                 <MessagesSquare className="size-4" />
               </div>
               <div className="min-w-0 flex-1">
-                <p className="truncate font-mono text-sm font-semibold">
+                <p className="truncate font-mono text-sm font-semibold tracking-tight">
                   {displayCode}
                 </p>
                 <p className="truncate text-xs text-muted-foreground">
@@ -286,8 +286,8 @@ export default function RoomHeader({ room, members }: RoomHeaderProps) {
             </div>
 
             <ScrollArea className="min-h-0 flex-1">
-              <div className="space-y-4 p-3">
-                <div className="rounded-lg border bg-card p-2 text-card-foreground">
+              <div className="space-y-5 p-4">
+                <div className="rounded-2xl border bg-card p-2.5 text-card-foreground shadow-sm">
                   <div className="flex items-center justify-between gap-3 px-2 py-1.5">
                     <div>
                       <p className="text-xs font-semibold">
@@ -443,7 +443,11 @@ export default function RoomHeader({ room, members }: RoomHeaderProps) {
                     checked={notifications}
                     onCheckedChange={setNotifications}
                   />
-                  <MenuButton icon={Palette} label="Appearance" />
+                  <MenuLink
+                    icon={Palette}
+                    label="Chat appearance"
+                    href="/appearance"
+                  />
                   <MenuButton icon={Languages} label="Language" />
                 </MenuSection>
 
@@ -582,11 +586,15 @@ function MenuSection({
 }) {
   return (
     <section>
-      <div className="mb-1.5 flex items-center gap-2 px-2 text-xs font-medium text-muted-foreground">
-        <Icon className="size-3.5" />
+      <div className="mb-2 flex items-center gap-2 px-1.5 text-[0.625rem] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+        <span className="flex size-6 items-center justify-center rounded-lg bg-primary/10 text-primary">
+          <Icon className="size-3" />
+        </span>
         <span>{title}</span>
       </div>
-      <div className="overflow-hidden rounded-lg border">{children}</div>
+      <div className="space-y-1 rounded-2xl border bg-card p-1.5 shadow-sm">
+        {children}
+      </div>
     </section>
   );
 }
@@ -607,14 +615,16 @@ function MenuButton({
       type="button"
       className={
         tone === "destructive"
-          ? "flex min-h-9 w-full items-center gap-3 px-3 text-left text-xs font-medium text-destructive hover:bg-destructive/10"
-          : "flex min-h-9 w-full items-center gap-3 px-3 text-left text-xs font-medium hover:bg-accent hover:text-accent-foreground"
+          ? "group flex min-h-10 w-full items-center gap-3 rounded-xl px-3 text-left text-xs font-medium text-destructive transition-colors hover:bg-destructive/10"
+          : "group flex min-h-10 w-full items-center gap-3 rounded-xl px-3 text-left text-xs font-medium transition-colors hover:bg-accent hover:text-accent-foreground"
       }
       onClick={onClick}
     >
-      <Icon className="size-3.5 text-muted-foreground" />
+      <span className={tone === "destructive" ? "flex size-7 items-center justify-center rounded-lg bg-destructive/10" : "flex size-7 items-center justify-center rounded-lg bg-muted text-muted-foreground group-hover:bg-background"}>
+        <Icon className="size-3.5" />
+      </span>
       <span className="min-w-0 flex-1 truncate">{label}</span>
-      <ChevronRight className="size-3 text-muted-foreground" />
+      <ChevronRight className="size-3 text-muted-foreground/60 transition-transform group-hover:translate-x-0.5" />
     </button>
   );
 }
@@ -635,11 +645,13 @@ function MenuLink({
       href={href}
       target={external ? "_blank" : undefined}
       rel={external ? "noopener noreferrer" : undefined}
-      className="flex min-h-9 w-full items-center gap-3 px-3 text-xs font-medium hover:bg-accent hover:text-accent-foreground"
+      className="group flex min-h-10 w-full items-center gap-3 rounded-xl px-3 text-xs font-medium transition-colors hover:bg-accent hover:text-accent-foreground"
     >
-      <Icon className="size-3.5 text-muted-foreground" />
+      <span className="flex size-7 items-center justify-center rounded-lg bg-muted text-muted-foreground group-hover:bg-background">
+        <Icon className="size-3.5" />
+      </span>
       <span className="min-w-0 flex-1 truncate">{label}</span>
-      <ChevronRight className="size-3 text-muted-foreground" />
+      <ChevronRight className="size-3 text-muted-foreground/60 transition-transform group-hover:translate-x-0.5" />
     </Link>
   );
 }
@@ -656,8 +668,10 @@ function ToggleRow({
   onCheckedChange: (checked: boolean) => void;
 }) {
   return (
-    <div className="flex min-h-9 w-full items-center gap-3 px-3 text-xs font-medium">
-      <Icon className="size-3.5 text-muted-foreground" />
+    <div className="flex min-h-10 w-full items-center gap-3 rounded-xl px-3 text-xs font-medium hover:bg-accent/50">
+      <span className="flex size-7 items-center justify-center rounded-lg bg-muted text-muted-foreground">
+        <Icon className="size-3.5" />
+      </span>
       <span className="min-w-0 flex-1 truncate">{label}</span>
       <Switch
         size="sm"

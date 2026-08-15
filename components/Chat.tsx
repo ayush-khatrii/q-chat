@@ -39,11 +39,6 @@ type MessageMetadata = {
   image?: string;
 };
 
-type MessageGroup = {
-  senderId: string;
-  messages: AblyMessage[];
-};
-
 function getInitials(name: string) {
   return (
     name
@@ -209,23 +204,6 @@ export default function Chat({ roomCode, members }: ChatProps) {
     [messages],
   );
 
-  const messageGroups = useMemo<MessageGroup[]>(() => {
-    return sortedMessages.reduce<MessageGroup[]>((groups, message) => {
-      const previousGroup = groups[groups.length - 1];
-
-      if (previousGroup && previousGroup.senderId === message.clientId) {
-        previousGroup.messages.push(message);
-      } else {
-        groups.push({
-          senderId: message.clientId,
-          messages: [message],
-        });
-      }
-
-      return groups;
-    }, []);
-  }, [sortedMessages]);
-
   const typingUsers = useMemo(
     () =>
       Array.from(currentTypers)
@@ -352,7 +330,7 @@ export default function Chat({ roomCode, members }: ChatProps) {
   };
 
   return (
-    <div className="flex h-full min-h-0 w-full min-w-0 flex-1 flex-col overflow-hidden bg-background">
+    <div className="mx-auto flex h-full min-h-0 w-full min-w-0 max-w-5xl flex-1 flex-col overflow-hidden bg-background">
       <ScrollArea
         className="
           min-h-0 min-w-0 flex-1 overflow-hidden
@@ -365,7 +343,7 @@ export default function Chat({ roomCode, members }: ChatProps) {
         <div
           role="log"
           aria-live="polite"
-          className="flex w-full min-w-0 flex-col gap-6 px-3 py-4 sm:px-5 sm:py-6"
+          className="flex w-full min-w-0 flex-col gap-5 px-3 py-4 sm:px-5 sm:py-6"
         >
           <div ref={sentinelRef} className="h-px w-full" />
 
@@ -377,16 +355,13 @@ export default function Chat({ roomCode, members }: ChatProps) {
             </div>
           )}
 
-          {messageGroups.map((group) => {
-            const firstMessage = group.messages[0];
-            const lastMessage = group.messages[group.messages.length - 1];
-
+          {sortedMessages.map((message) => {
             const sender = members.find(
-              (member) => member.userId === group.senderId,
+              (member) => member.userId === message.clientId,
             )?.user;
 
-            const metadata = getMessageMetadata(firstMessage);
-            const isMe = group.senderId === currentUser?.id;
+            const metadata = getMessageMetadata(message);
+            const isMe = message.clientId === currentUser?.id;
 
             const senderName = isMe
               ? currentUser?.name ??
@@ -396,7 +371,7 @@ export default function Chat({ roomCode, members }: ChatProps) {
               : sender?.name ??
               sender?.email ??
               metadata.displayName ??
-              group.senderId ??
+              message.clientId ??
               "Unknown user";
 
             const senderImage = isMe
@@ -405,7 +380,7 @@ export default function Chat({ roomCode, members }: ChatProps) {
 
             return (
               <article
-                key={`${group.senderId}-${firstMessage.serial}`}
+                key={message.serial}
                 className={[
                   "flex w-full min-w-0",
                   isMe ? "justify-end" : "justify-start",
@@ -413,7 +388,7 @@ export default function Chat({ roomCode, members }: ChatProps) {
               >
                 <div
                   className={[
-                    "flex w-full min-w-0 flex-col gap-2",
+                    "flex min-w-0 flex-col gap-2",
                     "max-w-[88%] sm:max-w-[78%] md:max-w-[72%] lg:max-w-[68%]",
                     isMe ? "items-end" : "items-start",
                   ].join(" ")}
@@ -424,15 +399,15 @@ export default function Chat({ roomCode, members }: ChatProps) {
                       isMe ? "flex-row-reverse" : "flex-row",
                     ].join(" ")}
                   >
-                    {/* <Avatar className="size:4 sm:size-7 shrink-0">
+                    <Avatar className="size-7 shrink-0 border border-border/70">
                       <AvatarImage
                         src={senderImage ?? undefined}
                         alt={senderName}
                       />
-                      <AvatarFallback className="bg-muted text-[10px] font-semibold">
+                      <AvatarFallback className="bg-muted text-[10px] font-semibold text-muted-foreground">
                         {getInitials(senderName)}
                       </AvatarFallback>
-                    </Avatar> */}
+                    </Avatar>
 
                     <div className="flex min-w-0 max-w-full items-center gap-2 text-[10px] sm:text-xs">
                       {isMe ? (
@@ -441,7 +416,7 @@ export default function Chat({ roomCode, members }: ChatProps) {
                         </span>
                       ) : (
                         <Link
-                          href={`/users/${group.senderId}`}
+                          href={`/users/${message.clientId}`}
                           className="min-w-0 truncate font-semibold hover:text-primary hover:underline"
                         >
                           {senderName}
@@ -451,10 +426,10 @@ export default function Chat({ roomCode, members }: ChatProps) {
                       <span className="shrink-0 text-border">|</span>
 
                       <time
-                        dateTime={lastMessage.timestamp.toISOString()}
+                        dateTime={message.timestamp.toISOString()}
                         className="shrink-0 whitespace-nowrap text-[10px] text-muted-foreground"
                       >
-                        {formatTime(lastMessage.timestamp)}
+                        {formatTime(message.timestamp)}
                       </time>
                     </div>
                   </div>
@@ -465,12 +440,9 @@ export default function Chat({ roomCode, members }: ChatProps) {
                       isMe ? "items-end" : "items-start",
                     ].join(" ")}
                   >
-                    {group.messages.map((message, index) => {
+                    {[message].map((message) => {
                       const isDeleted =
                         message.action === ChatMessageAction.MessageDelete;
-
-                      const isFirst = index === 0;
-                      const isLast = index === group.messages.length - 1;
 
                       const bubble = (
                         <div
@@ -484,16 +456,14 @@ export default function Chat({ roomCode, members }: ChatProps) {
                                 ? [
                                   "bg-primary text-primary-foreground",
                                   "rounded-2xl",
-                                  !isFirst && "rounded-tr-md",
-                                  !isLast && "rounded-br-md",
+                                  "rounded-br-md",
                                 ]
                                   .filter(Boolean)
                                   .join(" ")
                                 : [
                                   "bg-muted text-foreground",
                                   "rounded-2xl",
-                                  !isFirst && "rounded-tl-md",
-                                  !isLast && "rounded-bl-md",
+                                  "rounded-bl-md",
                                 ]
                                   .filter(Boolean)
                                   .join(" "),

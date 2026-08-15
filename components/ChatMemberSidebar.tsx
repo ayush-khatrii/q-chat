@@ -2,7 +2,8 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { MessageCircle, Search, Users, X } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { LogIn, Plus, Search, X } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -11,6 +12,8 @@ import { Separator } from "@/components/ui/separator";
 import { authClient } from "@/lib/auth-client";
 import { cn } from "@/lib/utils";
 import { useRooms } from "@/hooks/use-rooms";
+import RoomCreateDialog from "@/components/rooms/RoomCreateDialog";
+import RoomJoinDialog from "@/components/rooms/RoomJoinDialog";
 
 type ChatMembersSidebarProps = {
   open: boolean;
@@ -31,12 +34,25 @@ export default function ChatMembersSidebar({
   open,
   onClose,
 }: ChatMembersSidebarProps) {
+  const router = useRouter();
   const { data: session } = authClient.useSession();
-  const { rooms, isLoading } = useRooms(
-    Boolean(session?.user),
-    session?.user.id,
-  );
+  const { rooms, isLoading, isCreating, isJoining, createRoom, joinRoom } =
+    useRooms(Boolean(session?.user), session?.user.id);
   const [search, setSearch] = useState("");
+  const [createOpen, setCreateOpen] = useState(false);
+  const [joinOpen, setJoinOpen] = useState(false);
+
+  const handleCreate = async (name: string, customCode?: string) => {
+    const room = await createRoom(name, customCode);
+    onClose?.();
+    router.push(`/chat/${room.code}`);
+  };
+
+  const handleJoin = async (code: string) => {
+    const room = await joinRoom(code);
+    onClose?.();
+    router.push(`/chat/${room.code}`);
+  };
 
   const filteredRooms = rooms.filter((room) => {
     const query = search.trim().toLowerCase();
@@ -141,16 +157,35 @@ export default function ChatMembersSidebar({
           </ScrollArea>
 
           <Separator className="shrink-0" />
-          <div className="shrink-0 p-3">
-            <Button asChild className="w-full gap-2">
-              <Link href="/chat" onClick={onClose}>
-                <MessageCircle className="h-4 w-4" />
-                Create or join room
-              </Link>
+          <div className="grid shrink-0 gap-2 p-3">
+            <Button className="w-full gap-2" onClick={() => setCreateOpen(true)}>
+              <Plus className="h-4 w-4" />
+              Create new room
+            </Button>
+            <Button
+              variant="outline"
+              className="w-full gap-2"
+              onClick={() => setJoinOpen(true)}
+            >
+              <LogIn className="h-4 w-4" />
+              Join room
             </Button>
           </div>
         </div>
       </aside>
+
+      <RoomCreateDialog
+        open={createOpen}
+        onOpenChange={setCreateOpen}
+        isCreating={isCreating}
+        onCreate={handleCreate}
+      />
+      <RoomJoinDialog
+        open={joinOpen}
+        onOpenChange={setJoinOpen}
+        isJoining={isJoining}
+        onJoin={handleJoin}
+      />
     </>
   );
 }

@@ -3,6 +3,7 @@ import { z } from "zod";
 export const ROOM_CODE_PREFIX = "QC-";
 export const ROOM_CODE_LENGTH = 6;
 export const MAX_CUSTOM_ROOM_CODE_LENGTH = 20;
+export const MAX_ROOM_MEMBERS = 2;
 const ROOM_CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 
 export function normalizeCustomRoomCode(code?: string | null) {

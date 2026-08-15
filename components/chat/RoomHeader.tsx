@@ -27,6 +27,7 @@ import {
   Share2,
   ShieldCheck,
   Trash2,
+  UserMinus,
   UserPlus,
   Users,
   type LucideIcon,
@@ -99,6 +100,7 @@ export default function RoomHeader({ room, members }: RoomHeaderProps) {
   const [mounted, setMounted] = useState(false);
   const [notifications, setNotifications] = useState(true);
   const [isRemovingRoom, setIsRemovingRoom] = useState(false);
+  const [removingMemberId, setRemovingMemberId] = useState<string | null>(null);
   const [roomNotice, setRoomNotice] = useState<string | null>(null);
 
   const currentRoom = room;
@@ -154,6 +156,37 @@ export default function RoomHeader({ room, members }: RoomHeaderProps) {
       router.refresh();
     } finally {
       setIsRemovingRoom(false);
+    }
+  };
+
+  const handleRemoveMember = async (userId: string, name: string) => {
+    setRemovingMemberId(userId);
+    setRoomNotice(null);
+
+    try {
+      const response = await fetch(
+        `/api/rooms/${currentRoom.id}/members/${encodeURIComponent(userId)}`,
+        {
+          method: "DELETE",
+          credentials: "include",
+        },
+      );
+      const payload = (await response.json().catch(() => null)) as
+        | { error?: string }
+        | null;
+
+      if (!response.ok) {
+        throw new Error(payload?.error ?? "Unable to remove this member.");
+      }
+
+      setRoomNotice(`${name} was removed from the room.`);
+      router.refresh();
+    } catch (error) {
+      setRoomNotice(
+        error instanceof Error ? error.message : "Unable to remove this member.",
+      );
+    } finally {
+      setRemovingMemberId(null);
     }
   };
 
@@ -290,22 +323,51 @@ export default function RoomHeader({ room, members }: RoomHeaderProps) {
                               Joined {formatJoinedAt(member.joinedAt)}
                             </p>
                           </div>
-                          {member.userId === currentRoom?.ownerId ? (
-                            <Badge variant="default">Admin</Badge>
-                          ) : (
-                            <Badge variant="outline">Member</Badge>
-                          )}
+                          <div className="flex shrink-0 items-center gap-1.5">
+                            {member.userId === currentRoom?.ownerId ? (
+                              <Badge variant="default">Admin</Badge>
+                            ) : (
+                              <Badge variant="outline">Member</Badge>
+                            )}
+                            {currentRoom.isOwner &&
+                            member.userId !== currentRoom.ownerId ? (
+                              <Button
+                                type="button"
+                                variant="destructive"
+                                size="icon-sm"
+                                aria-label={`Remove ${getDisplayName(member.user)}`}
+                                title={`Remove ${getDisplayName(member.user)}`}
+                                disabled={removingMemberId !== null}
+                                onClick={() =>
+                                  void handleRemoveMember(
+                                    member.userId,
+                                    getDisplayName(member.user),
+                                  )
+                                }
+                              >
+                                <UserMinus />
+                              </Button>
+                            ) : null}
+                          </div>
                         </div>
                       ))}
                     </div>
                   ) : (
                     <div className="mt-2 rounded-md bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
-                      Use the Add room button to create a private room code for this chat.
+                      Use Create new room to make a private room code for this chat.
                     </div>
                   )}
                 </div>
 
                 <MenuSection icon={Folder} title="Workspace">
+                  <MenuButton
+                    icon={Plus}
+                    label="Create new room"
+                    onClick={() => {
+                      setMenuOpen(false);
+                      setCreateRoomOpen(true);
+                    }}
+                  />
                   {hasActiveRoom ? (
                     <>
                       <MenuButton
@@ -315,15 +377,6 @@ export default function RoomHeader({ room, members }: RoomHeaderProps) {
                       />
                       <MenuButton icon={Share2} label="Share invite link" />
                     </>
-                  ) : hasLoaded ? (
-                    <MenuButton
-                      icon={Plus}
-                      label="Add room"
-                      onClick={() => {
-                        setMenuOpen(false);
-                        setCreateRoomOpen(true);
-                      }}
-                    />
                   ) : null}
                   <MenuButton
                     icon={Users}

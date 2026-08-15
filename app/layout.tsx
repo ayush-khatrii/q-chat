@@ -3,11 +3,7 @@ import { Geist, Geist_Mono, Inter } from "next/font/google";
 import "./globals.css";
 import { cn } from "@/lib/utils";
 import { ThemeProvider } from "next-themes";
-import { SidebarProvider } from "@/components/sidebar-context";
-import SidebarLayout from "@/components/SidebarLayout";
-import NotificationInit from "@/components/NotificationInit";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import AppAblyProvider from "@/providers/AblyProvider";
 import { Toaster } from "sonner";
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-sans" });
@@ -102,19 +98,10 @@ export default function RootLayout({
         suppressHydrationWarning
       >
         <ThemeProvider attribute="class" defaultTheme="dark">
-          <SidebarProvider>
-            <TooltipProvider>
-              <AppAblyProvider>
-                <NotificationInit />
-                <Toaster position="bottom-right" richColors />
-                <main className="flex flex-col h-dvh">
-                  <SidebarLayout>
-                    {children}
-                  </SidebarLayout>
-                </main>
-              </AppAblyProvider>
-            </TooltipProvider>
-          </SidebarProvider>
+          <TooltipProvider>
+            <Toaster position="bottom-right" richColors />
+            {children}
+          </TooltipProvider>
         </ThemeProvider>
       </body>
     </html>

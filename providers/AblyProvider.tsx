@@ -10,10 +10,22 @@ import { authClient } from "@/lib/auth-client";
 
 type AppAblyProviderProps = {
   children: ReactNode;
+  authenticated?: boolean;
 };
 
 // 1. The Main Gatekeeper Provider
-export default function AppAblyProvider({ children }: AppAblyProviderProps) {
+export default function AppAblyProvider({
+  children,
+  authenticated = false,
+}: AppAblyProviderProps) {
+  if (authenticated) {
+    return <AblyConnectedProvider>{children}</AblyConnectedProvider>;
+  }
+
+  return <SessionAwareAblyProvider>{children}</SessionAwareAblyProvider>;
+}
+
+function SessionAwareAblyProvider({ children }: { children: ReactNode }) {
   const { data: session, isPending } = authClient.useSession();
 
   // If better-auth is still checking the session, show nothing (or a spinner)

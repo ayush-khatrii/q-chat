@@ -35,6 +35,14 @@ import {
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { Switch } from "@/components/ui/switch";
@@ -101,6 +109,8 @@ export default function RoomHeader({ room, members }: RoomHeaderProps) {
   const [notifications, setNotifications] = useState(true);
   const [isRemovingRoom, setIsRemovingRoom] = useState(false);
   const [removingMemberId, setRemovingMemberId] = useState<string | null>(null);
+  const [memberToRemove, setMemberToRemove] =
+    useState<UserRoomMember | null>(null);
   const [roomNotice, setRoomNotice] = useState<string | null>(null);
 
   const currentRoom = room;
@@ -180,6 +190,7 @@ export default function RoomHeader({ room, members }: RoomHeaderProps) {
       }
 
       setRoomNotice(`${name} was removed from the room.`);
+      setMemberToRemove(null);
       router.refresh();
     } catch (error) {
       setRoomNotice(
@@ -338,12 +349,10 @@ export default function RoomHeader({ room, members }: RoomHeaderProps) {
                                 aria-label={`Remove ${getDisplayName(member.user)}`}
                                 title={`Remove ${getDisplayName(member.user)}`}
                                 disabled={removingMemberId !== null}
-                                onClick={() =>
-                                  void handleRemoveMember(
-                                    member.userId,
-                                    getDisplayName(member.user),
-                                  )
-                                }
+                                onClick={() => {
+                                  setMenuOpen(false);
+                                  setMemberToRemove(member);
+                                }}
                               >
                                 <UserMinus />
                               </Button>
@@ -491,6 +500,73 @@ export default function RoomHeader({ room, members }: RoomHeaderProps) {
         onOpenChange={setRoomActionOpen}
         onConfirm={handleRemoveRoom}
       />
+      <Dialog
+        open={memberToRemove !== null}
+        onOpenChange={(open) => {
+          if (!open && removingMemberId === null) {
+            setMemberToRemove(null);
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Remove member</DialogTitle>
+            <DialogDescription>
+              Remove {memberToRemove
+                ? getDisplayName(memberToRemove.user)
+                : "this member"} from this room? They will need to join again to continue chatting.
+            </DialogDescription>
+          </DialogHeader>
+
+          {memberToRemove ? (
+            <div className="flex items-center gap-3 rounded-md border bg-muted/30 px-3 py-2">
+              <Avatar className="size-8">
+                <AvatarImage
+                  src={memberToRemove.user.image ?? undefined}
+                  alt={getDisplayName(memberToRemove.user)}
+                />
+                <AvatarFallback className="text-[0.625rem]">
+                  {getInitials(memberToRemove.user)}
+                </AvatarFallback>
+              </Avatar>
+              <div className="min-w-0">
+                <p className="truncate text-xs font-medium">
+                  {getDisplayName(memberToRemove.user)}
+                </p>
+                <p className="truncate text-[0.6875rem] text-muted-foreground">
+                  {memberToRemove.user.email}
+                </p>
+              </div>
+            </div>
+          ) : null}
+
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={removingMemberId !== null}
+              onClick={() => setMemberToRemove(null)}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              disabled={!memberToRemove || removingMemberId !== null}
+              onClick={() => {
+                if (memberToRemove) {
+                  void handleRemoveMember(
+                    memberToRemove.userId,
+                    getDisplayName(memberToRemove.user),
+                  );
+                }
+              }}
+            >
+              {removingMemberId ? "Removing..." : "Remove member"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </section>
   );
 }

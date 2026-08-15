@@ -6,6 +6,7 @@ import RoomHeader from "@/components/chat/RoomHeader";
 import { auth } from "@/lib/auth";
 import { getRoomForMember } from "@/lib/room-service";
 import { normalizeCustomRoomCode } from "@/lib/rooms";
+import AppAblyProvider from "@/providers/AblyProvider";
 
 export default async function RoomPage({
   params,
@@ -34,11 +35,13 @@ export default async function RoomPage({
   }
 
   return (
-    <AblyRoom roomName={`qchat:${room.code}`}>
-      <div className="flex min-h-0 w-full flex-1 flex-col">
-        <RoomHeader room={room} members={room.members} />
-        <Chat roomCode={room.code} members={room.members} />
-      </div>
-    </AblyRoom>
+    <AppAblyProvider authenticated>
+      <AblyRoom roomName={`qchat:${room.code}`}>
+        <div className="flex min-h-0 w-full flex-1 flex-col">
+          <RoomHeader room={room} members={room.members} />
+          <Chat roomCode={room.code} members={room.members} />
+        </div>
+      </AblyRoom>
+    </AppAblyProvider>
   );
 }

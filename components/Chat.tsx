@@ -565,6 +565,7 @@ export default function Chat({ roomCode, members }: ChatProps) {
                 min-h-11 min-w-0 flex-1 resize-none
                 rounded-2xl border-border bg-muted/40 px-4 py-3
                 text-sm leading-5 shadow-none focus-visible:ring-1
+                [scrollbar-width:none] [&::-webkit-scrollbar]:hidden
               "
             />
 

@@ -2,10 +2,13 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { MessageCircle, ArrowRight, MessageSquare } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import RoomCreateDialog from "@/components/rooms/RoomCreateDialog";
 import { authClient } from "@/lib/auth-client";
+import type { UserRoom } from "@/lib/rooms";
 
 const GoogleIcon = () => (
   <svg
@@ -33,9 +36,12 @@ const GoogleIcon = () => (
 );
 
 export default function HomePage() {
+  const router = useRouter();
   const { data: session } = authClient.useSession();
   const [signingIn, setSigningIn] = useState(false);
   const [signInError, setSignInError] = useState<string | null>(null);
+  const [createRoomOpen, setCreateRoomOpen] = useState(false);
+  const [isCreatingRoom, setIsCreatingRoom] = useState(false);
   const isLoggedIn = !!session;
 
   const handleGoogleSignIn = async () => {
@@ -55,10 +61,36 @@ export default function HomePage() {
       setSigningIn(false);
     }
   };
+
+  const handleCreateRoom = async (name: string, customCode?: string) => {
+    setIsCreatingRoom(true);
+
+    try {
+      const response = await fetch("/api/rooms", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ name, customCode }),
+      });
+      const payload = (await response.json().catch(() => null)) as
+        | { room?: UserRoom; error?: string }
+        | null;
+
+      if (!response.ok || !payload?.room) {
+        throw new Error(payload?.error ?? "Unable to create your room.");
+      }
+
+      router.push(`/chat/${payload.room.code}`);
+    } finally {
+      setIsCreatingRoom(false);
+    }
+  };
+
   return (
-    <main className="py-20 relative flex min-h-screen items-center justify-center overflow-hidden px-5">
-      <div className="absolute left-1/2 top-1/2 h-[500px] w-[500px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-primary/10 blur-[120px]" />
-      <section className="relative z-10 mx-auto flex max-w-5xl flex-col items-center text-center">
+    <>
+      <main className="py-20 relative flex min-h-screen items-center justify-center overflow-hidden px-5">
+        <div className="absolute left-1/2 top-1/2 h-[500px] w-[500px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-primary/10 blur-[120px]" />
+        <section className="relative z-10 mx-auto flex max-w-5xl flex-col items-center text-center">
         <div className="mb-8 cursor-pointer flex items-center gap-3 rounded-full border border-primary/70 bg-black px-4 py-2 backdrop-blur">
           <div className="flex  h-10 w-10 items-center justify-center rounded-xl bg-primary text-primary-foreground">
             <MessageCircle className="h-5 w-5" />
@@ -123,15 +155,13 @@ export default function HomePage() {
               </Button>
 
               <Button
-                asChild
                 size="lg"
                 variant="outline"
                 className="h-12 px-8 text-base"
+                onClick={() => setCreateRoomOpen(true)}
               >
-                <Link href="/chat">
-                  CREATE A ROOM
-                  <ArrowRight className="ml-2 h-4 w-4" />
-                </Link>
+                CREATE A ROOM
+                <ArrowRight className="ml-2 h-4 w-4" />
               </Button>
             </>
           )}
@@ -167,8 +197,16 @@ export default function HomePage() {
             <p className="text-xs text-muted-foreground">Chat Anywhere</p>
           </div>
         </div>
-      </section>
-      {/* <ConnectionStatusComponent /> */}
-    </main>
+        </section>
+        {/* <ConnectionStatusComponent /> */}
+      </main>
+
+      <RoomCreateDialog
+        open={createRoomOpen}
+        onOpenChange={setCreateRoomOpen}
+        isCreating={isCreatingRoom}
+        onCreate={handleCreateRoom}
+      />
+    </>
   );
 }

@@ -135,25 +135,6 @@ export async function POST(request: Request) {
     );
   }
 
-  const existingOwnedRoom = await prisma.room.findFirst({
-    where: {
-      ownerId: user.id,
-    },
-    select: {
-      id: true,
-      code: true,
-    },
-  });
-
-  if (existingOwnedRoom) {
-    return NextResponse.json(
-      {
-        error: `You already created room ${existingOwnedRoom.code}. Delete it before creating another room.`,
-      },
-      { status: 409 },
-    );
-  }
-
   const { name, customCode } = parsedBody.data;
   const normalizedCustomCode = normalizeCustomRoomCode(customCode);
   const maxAttempts = normalizedCustomCode ? 1 : 10;

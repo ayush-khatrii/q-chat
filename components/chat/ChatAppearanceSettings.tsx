@@ -9,6 +9,7 @@ import {
   Heart,
   Loader2,
   Moon,
+  RotateCcw,
   Save,
   Waves,
 } from "lucide-react";
@@ -159,10 +160,21 @@ function RoomThemeEditor({
               Shared with everyone in {room.name}
             </p>
           </div>
-          <Button onClick={() => void handleSave()} disabled={isSaving}>
-            {isSaving ? <Loader2 className="animate-spin" /> : <Save />}
-            {isSaving ? "Saving..." : "Save theme"}
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              onClick={() => setDraft(DEFAULT_ROOM_THEME)}
+              disabled={isSaving}
+            >
+              <RotateCcw />
+              <span className="hidden sm:inline">Reset to default</span>
+              <span className="sm:hidden">Reset</span>
+            </Button>
+            <Button onClick={() => void handleSave()} disabled={isSaving}>
+              {isSaving ? <Loader2 className="animate-spin" /> : <Save />}
+              {isSaving ? "Saving..." : "Save theme"}
+            </Button>
+          </div>
         </div>
       </header>
 
@@ -383,8 +395,8 @@ function PreviewBubble({
         className={[
           "max-w-[80%] rounded-2xl px-3 py-1.5 shadow-sm",
           incoming
-            ? "bg-[var(--chat-incoming)] text-[var(--chat-incoming-foreground)]"
-            : "bg-[var(--chat-outgoing)] text-[var(--chat-outgoing-foreground)]",
+            ? "border border-white/15 bg-[var(--chat-incoming)] text-[var(--chat-incoming-foreground)]"
+            : "border border-transparent bg-[var(--chat-outgoing)] text-[var(--chat-outgoing-foreground)]",
         ].join(" ")}
       >
         <p className="text-[13px] leading-5">{text}</p>

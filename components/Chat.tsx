@@ -469,12 +469,11 @@ export default function Chat({
                           className={[
                             "inline-block min-w-0 max-w-full overflow-hidden rounded-2xl",
                             "px-3 py-1.5 shadow-sm",
-                            "ring-1 ring-inset ring-black/5 dark:ring-white/5",
                             isDeleted
-                              ? "rounded-2xl bg-muted/60 text-muted-foreground"
+                              ? "border border-white/10 bg-muted/60 text-muted-foreground"
                               : isMe
-                                ? "bg-[var(--chat-outgoing,var(--primary))] text-[var(--chat-outgoing-foreground,var(--primary-foreground))]"
-                                : "bg-[var(--chat-incoming,var(--muted))] text-[var(--chat-incoming-foreground,var(--foreground))]",
+                                ? "border border-transparent bg-[var(--chat-outgoing,var(--primary))] text-[var(--chat-outgoing-foreground,var(--primary-foreground))]"
+                                : "border border-white/15 bg-[var(--chat-incoming,var(--muted))] text-[var(--chat-incoming-foreground,var(--foreground))]",
                           ].join(" ")}
                         >
                           <p

@@ -30,7 +30,7 @@ model Room {
   id      String @id @default(cuid())
   code    String @unique
   name    String
-  theme   Json?
+  theme   Json   @default("{\"surface\":\"#000000\",\"outgoingBubble\":\"#ffffff\",\"outgoingText\":\"#09090b\",\"incomingBubble\":\"#000000\",\"incomingText\":\"#fafafa\",\"pattern\":\"none\",\"patternColor\":\"#ffffff\",\"patternOpacity\":\"subtle\"}")
   ownerId String
   owner   User   @relation("RoomOwner", fields: [ownerId], references: [id])
 
@@ -139,10 +139,9 @@ model Verification {
   @@map("verification")
 }
 
-
 model FcmToken {
-  id     String @id @default(cuid())
-  userId String
-  token  String @unique
+  id        String   @id @default(cuid())
+  userId    String
+  token     String   @unique
   createdAt DateTime @default(now())
 }

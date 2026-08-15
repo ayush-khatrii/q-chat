@@ -20,13 +20,13 @@ export const roomThemeSchema = z.object({
 export type RoomTheme = z.infer<typeof roomThemeSchema>;
 
 export const DEFAULT_ROOM_THEME: RoomTheme = {
-  surface: "#0b141a",
-  outgoingBubble: "#005c4b",
-  outgoingText: "#e9edef",
-  incomingBubble: "#202c33",
-  incomingText: "#e9edef",
+  surface: "#000000",
+  outgoingBubble: "#ffffff",
+  outgoingText: "#09090b",
+  incomingBubble: "#000000",
+  incomingText: "#fafafa",
   pattern: "none",
-  patternColor: "#f472b6",
+  patternColor: "#ffffff",
   patternOpacity: "subtle",
 };
 

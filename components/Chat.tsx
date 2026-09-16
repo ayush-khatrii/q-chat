@@ -1,6 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import Link from "next/link";
 import { Copy, Pencil, Send, Trash2 } from "lucide-react";
 import { toast } from "sonner";
@@ -27,7 +34,10 @@ import { useMessages, useTyping } from "@ably/chat/react";
 
 import { authClient } from "@/lib/auth-client";
 import { initFcm } from "@/lib/fcm";
-import { getRoomThemeStyle, useRoomTheme } from "@/components/chat/chat-appearance";
+import {
+  getRoomThemeStyle,
+  useRoomTheme,
+} from "@/components/chat/chat-appearance";
 import type { RoomTheme, UserRoomMember } from "@/lib/rooms";
 
 type ChatProps = {
@@ -100,9 +110,17 @@ export default function Chat({
   const [sendError, setSendError] = useState<string | null>(null);
   const [hasMore, setHasMore] = useState(false);
   const [loadingHistory, setLoadingHistory] = useState(false);
+  const [historyLoaded, setHistoryLoaded] = useState(false);
+  const [historyError, setHistoryError] = useState<string | null>(null);
+  const [historyRetry, setHistoryRetry] = useState(0);
 
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
-  const sentinelRef = useRef<HTMLDivElement | null>(null);
+  const scrollAreaRef = useRef<HTMLDivElement | null>(null);
+  const loadingHistoryRef = useRef(false);
+  const initialHistoryRequestRef = useRef<unknown>(undefined);
+  const scrollAdjustmentRef = useRef<
+    { type: "bottom" } | { type: "preserve"; previousHeight: number } | null
+  >(null);
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const historyPageRef = useRef<any>(null);
@@ -124,38 +142,76 @@ export default function Chat({
       if (event.type === ChatMessageEventType.Deleted) {
         setMessages((previous) =>
           previous.map((message) =>
-            message.serial === event.message.serial
-              ? event.message
-              : message,
+            message.serial === event.message.serial ? event.message : message,
           ),
         );
       }
     },
   });
 
-  useEffect(() => {
-    if (!historyBeforeSubscribe) return;
+  const getScrollViewport = useCallback(
+    () =>
+      scrollAreaRef.current?.querySelector<HTMLElement>(
+        '[data-slot="scroll-area-viewport"]',
+      ) ?? null,
+    [],
+  );
 
+  useEffect(() => {
+    if (
+      !historyBeforeSubscribe ||
+      initialHistoryRequestRef.current === historyBeforeSubscribe
+    ) {
+      return;
+    }
+
+    initialHistoryRequestRef.current = historyBeforeSubscribe;
+    loadingHistoryRef.current = true;
     setLoadingHistory(true);
+    setHistoryError(null);
 
     historyBeforeSubscribe({ limit: 20 })
       .then((page) => {
-        setMessages(page.items);
+        // Realtime events can arrive while history is in flight. Merge instead of
+        // replacing state so a newly received message is never briefly discarded.
+        setMessages((current) => {
+          const bySerial = new Map(
+            current.map((message) => [message.serial, message]),
+          );
+
+          for (const message of page.items) {
+            bySerial.set(message.serial, message);
+          }
+
+          return Array.from(bySerial.values());
+        });
         setHasMore(!page.isLast());
         historyPageRef.current = page;
+        scrollAdjustmentRef.current = { type: "bottom" };
+        setHistoryLoaded(true);
       })
       .catch((error) => {
         console.error("Error loading history:", error);
+        setHistoryError("Messages could not be loaded. Please try again.");
+        initialHistoryRequestRef.current = undefined;
       })
       .finally(() => {
+        loadingHistoryRef.current = false;
         setLoadingHistory(false);
       });
-  }, [historyBeforeSubscribe]);
+  }, [historyBeforeSubscribe, historyRetry]);
 
   const loadMore = useCallback(async () => {
-    if (!historyPageRef.current || !hasMore || loadingHistory) return;
+    if (!historyPageRef.current || !hasMore || loadingHistoryRef.current) {
+      return;
+    }
 
+    loadingHistoryRef.current = true;
     setLoadingHistory(true);
+    setHistoryError(null);
+
+    const viewport = getScrollViewport();
+    const previousHeight = viewport?.scrollHeight;
 
     try {
       const nextPage = await historyPageRef.current.next();
@@ -165,12 +221,21 @@ export default function Chat({
       setMessages((previous) => [...nextPage.items, ...previous]);
       setHasMore(!nextPage.isLast());
       historyPageRef.current = nextPage;
+
+      if (previousHeight !== undefined) {
+        scrollAdjustmentRef.current = {
+          type: "preserve",
+          previousHeight,
+        };
+      }
     } catch (error) {
       console.error("Error loading older messages:", error);
+      setHistoryError("Older messages could not be loaded. Please try again.");
     } finally {
+      loadingHistoryRef.current = false;
       setLoadingHistory(false);
     }
-  }, [hasMore, loadingHistory]);
+  }, [getScrollViewport, hasMore]);
 
   useEffect(() => {
     if (currentUser?.id) {
@@ -179,23 +244,24 @@ export default function Chat({
   }, [currentUser?.id]);
 
   useEffect(() => {
-    const sentinel = sentinelRef.current;
+    const viewport = getScrollViewport();
 
-    if (!sentinel) return;
+    if (!viewport) return;
 
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        if (entry.isIntersecting) {
-          void loadMore();
-        }
-      },
-      { threshold: 0.1 },
-    );
+    const handleScroll = () => {
+      // Only paginate a genuinely scrollable conversation. A permanently visible
+      // top sentinel used to request every history page immediately on room load.
+      if (
+        viewport.scrollHeight > viewport.clientHeight &&
+        viewport.scrollTop <= 80
+      ) {
+        void loadMore();
+      }
+    };
 
-    observer.observe(sentinel);
-
-    return () => observer.disconnect();
-  }, [loadMore]);
+    viewport.addEventListener("scroll", handleScroll, { passive: true });
+    return () => viewport.removeEventListener("scroll", handleScroll);
+  }, [getScrollViewport, loadMore]);
 
   useEffect(() => {
     const textarea = textareaRef.current;
@@ -214,6 +280,21 @@ export default function Chat({
       ),
     [messages],
   );
+
+  useLayoutEffect(() => {
+    const adjustment = scrollAdjustmentRef.current;
+    const viewport = getScrollViewport();
+
+    if (!adjustment || !viewport) return;
+
+    if (adjustment.type === "bottom") {
+      viewport.scrollTop = viewport.scrollHeight;
+    } else {
+      viewport.scrollTop += viewport.scrollHeight - adjustment.previousHeight;
+    }
+
+    scrollAdjustmentRef.current = null;
+  }, [getScrollViewport, messages]);
 
   const messageGroups = useMemo<MessageGroup[]>(() => {
     return sortedMessages.reduce<MessageGroup[]>((groups, message) => {
@@ -293,9 +374,7 @@ export default function Chat({
     }
   };
 
-  const handleKeyDown = (
-    event: React.KeyboardEvent<HTMLTextAreaElement>,
-  ) => {
+  const handleKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (
       event.key === "Enter" &&
       !event.shiftKey &&
@@ -306,9 +385,7 @@ export default function Chat({
     }
   };
 
-  const handleSubmit = async (
-    event: React.FormEvent<HTMLFormElement>,
-  ) => {
+  const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
     const text = draft.trim();
@@ -360,6 +437,7 @@ export default function Chat({
       style={getRoomThemeStyle(theme)}
     >
       <ScrollArea
+        ref={scrollAreaRef}
         className="
           min-h-0 min-w-0 flex-1 overflow-hidden
           [&_[data-radix-scroll-area-viewport]]:overflow-x-hidden
@@ -373,13 +451,51 @@ export default function Chat({
           aria-live="polite"
           className="mx-auto flex w-full max-w-5xl min-w-0 flex-col gap-4 px-3 py-4 sm:px-5 sm:py-6"
         >
-          <div ref={sentinelRef} className="h-px w-full" />
+          {hasMore && !loadingHistory && (
+            <div className="flex justify-center py-2">
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                onClick={() => void loadMore()}
+                className="rounded-full text-xs"
+              >
+                Load older messages
+              </Button>
+            </div>
+          )}
 
           {loadingHistory && (
             <div className="flex justify-center py-2">
-              <span className="rounded-full bg-muted px-3 py-1 text-xs text-muted-foreground">
-                Loading older messages…
+              <span
+                role="status"
+                className="rounded-full bg-muted px-3 py-1 text-xs text-muted-foreground"
+              >
+                {historyLoaded
+                  ? "Loading older messages…"
+                  : "Loading messages…"}
               </span>
+            </div>
+          )}
+
+          {historyError && !loadingHistory && (
+            <div className="flex flex-col items-center gap-2 py-2 text-center">
+              <p className="text-xs text-destructive">{historyError}</p>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  if (historyLoaded) {
+                    void loadMore();
+                  } else {
+                    initialHistoryRequestRef.current = undefined;
+                    setHistoryRetry((value) => value + 1);
+                  }
+                }}
+              >
+                Try again
+              </Button>
             </div>
           )}
 
@@ -393,19 +509,19 @@ export default function Chat({
             const isMe = group.senderId === currentUser?.id;
 
             const senderName = isMe
-              ? currentUser?.name ??
-              currentUser?.email ??
-              metadata.displayName ??
-              "You"
-              : sender?.name ??
-              sender?.email ??
-              metadata.displayName ??
-              group.senderId ??
-              "Unknown user";
+              ? (currentUser?.name ??
+                currentUser?.email ??
+                metadata.displayName ??
+                "You")
+              : (sender?.name ??
+                sender?.email ??
+                metadata.displayName ??
+                group.senderId ??
+                "Unknown user");
 
             const senderImage = isMe
-              ? currentUser?.image ?? metadata.image
-              : sender?.image ?? metadata.image;
+              ? (currentUser?.image ?? metadata.image)
+              : (sender?.image ?? metadata.image);
 
             return (
               <article
@@ -482,9 +598,7 @@ export default function Chat({
                               "overflow-hidden break-words",
                               "[overflow-wrap:anywhere]",
                               "[word-break:break-word]",
-                              isDeleted
-                                ? "select-none italic opacity-70"
-                                : "",
+                              isDeleted ? "select-none italic opacity-70" : "",
                             ].join(" ")}
                           >
                             {isDeleted
@@ -540,7 +654,10 @@ export default function Chat({
                       }
 
                       return (
-                        <div key={message.serial} className="min-w-0 max-w-full">
+                        <div
+                          key={message.serial}
+                          className="min-w-0 max-w-full"
+                        >
                           {bubble}
                         </div>
                       );

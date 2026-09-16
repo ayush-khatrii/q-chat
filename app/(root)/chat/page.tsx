@@ -1,10 +1,20 @@
+import { Suspense } from "react";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
+import ContentFallback from "@/components/ContentFallback";
 import RoomStart from "@/components/rooms/RoomStart";
 import { auth } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 
-export default async function Page() {
+export default function Page() {
+  return (
+    <Suspense fallback={<ContentFallback />}>
+      <ChatHome />
+    </Suspense>
+  );
+}
+
+async function ChatHome() {
   const session = await auth.api.getSession({
     headers: await headers(),
   });

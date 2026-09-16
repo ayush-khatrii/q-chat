@@ -1,18 +1,28 @@
+import { Suspense } from "react";
 import { headers } from "next/headers";
 import { notFound, redirect } from "next/navigation";
 import Chat from "@/components/Chat";
 import AblyRoom from "@/components/chat/AblyRoom";
 import RoomHeader from "@/components/chat/RoomHeader";
+import RoomSkeleton from "@/components/chat/RoomSkeleton";
+import AppAblyProvider from "@/providers/AblyProvider";
 import { auth } from "@/lib/auth";
 import { getRoomForMember } from "@/lib/room-service";
 import { normalizeCustomRoomCode } from "@/lib/rooms";
-import AppAblyProvider from "@/providers/AblyProvider";
 
-export default async function RoomPage({
-  params,
-}: {
+type RoomPageProps = {
   params: Promise<{ code: string }>;
-}) {
+};
+
+export default function RoomPage({ params }: RoomPageProps) {
+  return (
+    <Suspense fallback={<RoomSkeleton />}>
+      <RoomContent params={params} />
+    </Suspense>
+  );
+}
+
+async function RoomContent({ params }: RoomPageProps) {
   const session = await auth.api.getSession({
     headers: await headers(),
   });

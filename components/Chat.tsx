@@ -546,10 +546,7 @@ export default function Chat({
                   ].join(" ")}
                 >
                   <div
-                    className={[
-                      "flex max-w-full min-w-0 items-center gap-2 px-1",
-                      isMe ? "flex-row-reverse" : "flex-row",
-                    ].join(" ")}
+                    className="flex max-w-full min-w-0 items-center gap-2 px-1"
                   >
                     <Avatar className="size-7 shrink-0 border border-border/70">
                       <AvatarImage

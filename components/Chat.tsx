@@ -85,12 +85,19 @@ function getMessageMetadata(message: AblyMessage): MessageMetadata {
   };
 }
 
-function formatTime(value: Date) {
-  return new Intl.DateTimeFormat("en-IN", {
+function formatDateTime(value: Date) {
+  const day = value.getDate();
+  const month = value.toLocaleString("en-IN", { month: "short" }).toLowerCase();
+  const year = value.getFullYear();
+  const time = new Intl.DateTimeFormat("en-IN", {
     hour: "numeric",
     minute: "2-digit",
     hour12: true,
-  }).format(value);
+  })
+    .format(value)
+    .toUpperCase();
+
+  return `${day} ${month} ${year}, ${time}`;
 }
 
 export default function Chat({
@@ -554,19 +561,18 @@ export default function Chat({
                       </AvatarFallback>
                     </Avatar>
 
-                    <div className="flex min-w-0 max-w-full items-center gap-2 text-[10px] sm:text-xs">
-                      {isMe ? (
-                        <span className="min-w-0 truncate font-semibold">
-                          {senderName}
-                        </span>
-                      ) : (
-                        <Link
-                          href={`/users/${group.senderId}`}
-                          className="min-w-0 truncate font-semibold hover:text-primary hover:underline"
-                        >
-                          {senderName}
-                        </Link>
-                      )}
+             <div className="flex min-w-0 max-w-full items-center gap-1.5 text-[11px] text-muted-foreground">
+            {isMe ? (
+                <span className="min-w-0 truncate font-semibold text-foreground">{senderName}</span>
+                    ) : (
+                      <Link href={`/users/${group.senderId}`} className="min-w-0 truncate font-semibold text-foreground hover:text-primary hover:underline">
+                        {senderName}
+                      </Link>
+                  )}
+                  <span aria-hidden="true" className="opacity-50">•</span>
+                    <time dateTime={firstMessage.timestamp.toISOString()} className="shrink-0 whitespace-nowrap">
+                        {formatDateTime(firstMessage.timestamp)}
+                        </time>
                     </div>
                   </div>
 
@@ -580,42 +586,29 @@ export default function Chat({
                       const isDeleted =
                         message.action === ChatMessageAction.MessageDelete;
 
-                      const bubble = (
-                        <div
-                          className={[
-                            "inline-block min-w-0 max-w-full overflow-hidden rounded-2xl",
-                            "px-3 py-1.5 shadow-sm",
-                            isDeleted
-                              ? "border border-white/10 bg-muted/60 text-muted-foreground"
-                              : isMe
-                                ? "border border-transparent bg-[var(--chat-outgoing,var(--primary))] text-[var(--chat-outgoing-foreground,var(--primary-foreground))]"
-                                : "border border-white/15 bg-[var(--chat-incoming,var(--muted))] text-[var(--chat-incoming-foreground,var(--foreground))]",
-                          ].join(" ")}
-                        >
-                          <p
-                            className={[
-                              "m-0 max-w-full whitespace-pre-wrap text-[13px] leading-5",
-                              "overflow-hidden break-words",
-                              "[overflow-wrap:anywhere]",
-                              "[word-break:break-word]",
-                              isDeleted ? "select-none italic opacity-70" : "",
-                            ].join(" ")}
-                          >
-                            {isDeleted
-                              ? `Message deleted by ${senderName}`
-                              : message.text}
-                          </p>
-                          <time
-                            dateTime={message.timestamp.toISOString()}
-                            className={[
-                              "my-2 px-1 block whitespace-nowrap text-[9px] leading-none opacity-55",
-                              isMe ? "text-left" : "text-right",
-                            ].join(" ")}
-                          >
-                            {formatTime(message.timestamp)}
-                          </time>
-                        </div>
-                      );
+                     const bubble = (
+  <div
+    className={[
+      "inline-block max-w-full overflow-hidden rounded-2xl",
+      "px-4 py-2.5 shadow-sm",
+      isDeleted
+        ? "border border-white/10 bg-muted/60 text-muted-foreground"
+        : isMe
+          ? "border border-transparent bg-[var(--chat-outgoing,var(--primary))] text-[var(--chat-outgoing-foreground,var(--primary-foreground))]"
+          : "border border-white/15 bg-[var(--chat-incoming,var(--muted))] text-[var(--chat-incoming-foreground,var(--foreground))]",
+    ].join(" ")}
+  >
+    <p
+      className={[
+        "m-0 max-w-full whitespace-pre-wrap text-[13px] leading-5",
+        "overflow-hidden break-words [overflow-wrap:anywhere] [word-break:break-word]",
+        isDeleted ? "select-none italic opacity-70" : "",
+      ].join(" ")}
+    >
+      {isDeleted ? `Message deleted by ${senderName}` : message.text}
+    </p>
+  </div>
+);
 
                       if (!isDeleted && isMe) {
                         return (

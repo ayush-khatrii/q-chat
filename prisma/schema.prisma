@@ -8,11 +8,12 @@ datasource db {
 }
 
 model User {
-  id          String       @id @default(cuid())
-  name        String?
-  ownedRooms  Room[]       @relation("RoomOwner")
-  joinedRooms RoomMember[]
-  messages    Message[]
+  id           String        @id @default(cuid())
+  name         String?
+  ownedRooms   Room[]        @relation("RoomOwner")
+  joinedRooms  RoomMember[]
+  messages     Message[]
+  messageReads MessageRead[]
 
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
@@ -34,8 +35,9 @@ model Room {
   ownerId String
   owner   User   @relation("RoomOwner", fields: [ownerId], references: [id])
 
-  roomMembers RoomMember[]
-  messages    Message[]
+  roomMembers  RoomMember[]
+  messages     Message[]
+  messageReads MessageRead[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -73,6 +75,20 @@ model Message {
   @@index([roomId])
   @@index([senderId])
   @@index([createdAt])
+}
+
+model MessageRead {
+  id            String   @id @default(cuid())
+  roomId        String
+  room          Room     @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  messageSerial String
+  readerId      String
+  reader        User     @relation(fields: [readerId], references: [id], onDelete: Cascade)
+  readAt        DateTime @default(now())
+
+  @@unique([roomId, messageSerial, readerId])
+  @@index([roomId, messageSerial])
+  @@index([readerId])
 }
 
 model Attachment {

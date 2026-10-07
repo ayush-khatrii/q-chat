@@ -8,24 +8,14 @@ import {
   useRef,
   useState,
 } from "react";
-import Link from "next/link";
-import { Copy, Pencil, Send, Trash2 } from "lucide-react";
+import { Send } from "lucide-react";
 import { toast } from "sonner";
 
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
-import {
-  ContextMenu,
-  ContextMenuContent,
-  ContextMenuItem,
-  ContextMenuSeparator,
-  ContextMenuTrigger,
-} from "@/components/ui/context-menu";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Textarea } from "@/components/ui/textarea";
 
 import {
-  ChatMessageAction,
   ChatMessageEventType,
   type ChatMessageEvent,
   type Message as AblyMessage,
@@ -38,6 +28,7 @@ import {
   getRoomThemeStyle,
   useRoomTheme,
 } from "@/components/chat/chat-appearance";
+import { ChatBubbleMessage } from "@/components/chat/ChatBubbleMessage";
 import type { RoomTheme, UserRoomMember } from "@/lib/rooms";
 
 type ChatProps = {
@@ -51,18 +42,6 @@ type MessageMetadata = {
   displayName?: string;
   image?: string;
 };
-
-function getInitials(name: string) {
-  return (
-    name
-      .split(/\s|@/)
-      .filter(Boolean)
-      .map((part) => part[0])
-      .join("")
-      .toUpperCase()
-      .slice(0, 2) || "?"
-  );
-}
 
 function getMessageMetadata(message: AblyMessage): MessageMetadata {
   if (!message.metadata || typeof message.metadata !== "object") {
@@ -80,20 +59,10 @@ function getMessageMetadata(message: AblyMessage): MessageMetadata {
   };
 }
 
-function formatDateTime(value: Date) {
-  const day = value.getDate();
-  const month = value.toLocaleString("en-IN", { month: "short" }).toLowerCase();
-  const year = value.getFullYear();
-  const time = new Intl.DateTimeFormat("en-IN", {
-    hour: "numeric",
-    minute: "2-digit",
-    hour12: true,
-  })
-    .format(value)
-    .toUpperCase();
-
-  return `${day} ${month} ${year}, ${time}`;
-}
+type ReadReceipt = {
+  messageSerial: string;
+  readAt: string;
+};
 
 export default function Chat({
   roomId,
@@ -115,11 +84,14 @@ export default function Chat({
   const [historyLoaded, setHistoryLoaded] = useState(false);
   const [historyError, setHistoryError] = useState<string | null>(null);
   const [historyRetry, setHistoryRetry] = useState(0);
+  const [readReceipts, setReadReceipts] = useState<Record<string, string>>({});
+  const [isPageVisible, setIsPageVisible] = useState(true);
 
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const scrollAreaRef = useRef<HTMLDivElement | null>(null);
   const loadingHistoryRef = useRef(false);
   const initialHistoryRequestRef = useRef<unknown>(undefined);
+  const readRequestsRef = useRef(new Set<string>());
   const scrollAdjustmentRef = useRef<
     { type: "bottom" } | { type: "preserve"; previousHeight: number } | null
   >(null);
@@ -158,6 +130,92 @@ export default function Chat({
       ) ?? null,
     [],
   );
+
+  const refreshReadReceipts = useCallback(async () => {
+    if (!currentUser?.id) return;
+
+    try {
+      const response = await fetch(`/api/rooms/${roomId}/reads`, {
+        credentials: "include",
+        cache: "no-store",
+      });
+
+      if (!response.ok) return;
+
+      const payload = (await response.json()) as { receipts: ReadReceipt[] };
+      setReadReceipts(
+        Object.fromEntries(
+          payload.receipts.map((receipt) => [
+            receipt.messageSerial,
+            receipt.readAt,
+          ]),
+        ),
+      );
+    } catch (error) {
+      console.error("Error loading read receipts:", error);
+    }
+  }, [currentUser?.id, roomId]);
+
+  const handleMessageRead = useCallback(
+    async (messageSerial: string) => {
+      if (!currentUser?.id || readRequestsRef.current.has(messageSerial)) {
+        return;
+      }
+
+      readRequestsRef.current.add(messageSerial);
+
+      try {
+        const response = await fetch(`/api/rooms/${roomId}/reads`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({ messageSerial }),
+        });
+
+        if (!response.ok) {
+          throw new Error("Unable to save read receipt.");
+        }
+      } catch (error) {
+        readRequestsRef.current.delete(messageSerial);
+        console.error("Error saving read receipt:", error);
+      }
+    },
+    [currentUser?.id, roomId],
+  );
+
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      setIsPageVisible(document.visibilityState === "visible");
+    };
+
+    handleVisibilityChange();
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    return () =>
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+  }, []);
+
+  useEffect(() => {
+    if (!currentUser?.id) return;
+
+    readRequestsRef.current.clear();
+    setReadReceipts({});
+    void refreshReadReceipts();
+
+    const interval = window.setInterval(() => {
+      if (document.visibilityState === "visible") {
+        void refreshReadReceipts();
+      }
+    }, 4_000);
+
+    const handleFocus = () => void refreshReadReceipts();
+    window.addEventListener("focus", handleFocus);
+
+    return () => {
+      window.clearInterval(interval);
+      window.removeEventListener("focus", handleFocus);
+    };
+  }, [currentUser?.id, refreshReadReceipts]);
 
   useEffect(() => {
     if (
@@ -510,126 +568,20 @@ export default function Chat({
               ? (currentUser?.image ?? metadata.image)
               : (sender?.image ?? metadata.image);
 
-            const isDeleted =
-              message.action === ChatMessageAction.MessageDelete;
-
-            const messageBubble = (
-              <div
-                className={[
-                  "relative -mt-1 inline-block w-full min-w-0 overflow-hidden rounded-full",
-                  "border px-4 pb-3 pt-4 shadow-sm",
-                  isDeleted
-                    ? "border-white/10 bg-muted/60 text-muted-foreground"
-                    : isMe
-                      ? "border-transparent bg-[var(--chat-outgoing,var(--primary))] text-[var(--chat-outgoing-foreground,var(--primary-foreground))]"
-                      : "border-white/15 bg-[var(--chat-incoming,var(--muted))] text-[var(--chat-incoming-foreground,var(--foreground))]",
-                ].join(" ")}
-              >
-                <p
-                  className={[
-                    "m-0 max-w-full whitespace-pre-wrap text-[13px] leading-5 sm:text-sm",
-                    "overflow-hidden break-words [overflow-wrap:anywhere] [word-break:break-word]",
-                    isDeleted ? "select-none italic opacity-70" : "",
-                  ].join(" ")}
-                >
-                  {isDeleted
-                    ? `Message deleted by ${senderName}`
-                    : message.text}
-                </p>
-              </div>
-            );
-
             return (
-              <article
+              <ChatBubbleMessage
                 key={message.serial}
-                className={[
-                  "flex w-full min-w-0",
-                  isMe ? "justify-end" : "justify-start",
-                ].join(" ")}
-              >
-                <div
-                  className={[
-                    "flex w-fit min-w-0 flex-col",
-                    "max-w-[84%] sm:max-w-[72%] md:max-w-[64%] lg:max-w-[58%]",
-                    isMe ? "items-end" : "items-start",
-                  ].join(" ")}
-                >
-                  <header
-                    className="relative z-10 flex w-full min-w-0 flex-row items-center gap-2 rounded-full border border-white/15 bg-[var(--chat-incoming,var(--muted))] px-2 py-1.5 text-[var(--chat-incoming-foreground,var(--foreground))] shadow-sm backdrop-blur-sm"
-                  >
-                    <Avatar className="size-8 shrink-0 border border-current/25">
-                      <AvatarImage
-                        src={senderImage ?? undefined}
-                        alt={senderName}
-                      />
-                      <AvatarFallback className="bg-background/20 text-[10px] font-semibold text-current">
-                        {getInitials(senderName)}
-                      </AvatarFallback>
-                    </Avatar>
-
-                    <div
-                      className={[
-                        "flex min-w-0 max-w-full items-center text-xs sm:text-sm",
-                        isMe ? "text-right" : "text-left",
-                      ].join(" ")}
-                    >
-                      {isMe ? (
-                        <span className="min-w-0 truncate font-semibold">
-                          {senderName}
-                        </span>
-                      ) : (
-                        <Link
-                          href={`/users/${message.clientId}`}
-                          className="min-w-0 truncate font-semibold hover:text-primary hover:underline"
-                        >
-                          {senderName}
-                        </Link>
-                      )}
-                    </div>
-                  </header>
-
-                  {!isDeleted && isMe ? (
-                    <ContextMenu>
-                      <ContextMenuTrigger asChild>
-                        {messageBubble}
-                      </ContextMenuTrigger>
-
-                      <ContextMenuContent className="w-40">
-                        <ContextMenuItem
-                          onClick={() => handleCopyMessage(message)}
-                        >
-                          <Copy className="mr-2 size-4" />
-                          Copy
-                        </ContextMenuItem>
-
-                        <ContextMenuItem onClick={() => handleEditMessage()}>
-                          <Pencil className="mr-2 size-4" />
-                          Edit
-                        </ContextMenuItem>
-
-                        <ContextMenuSeparator />
-
-                        <ContextMenuItem
-                          variant="destructive"
-                          onClick={() => handleDeleteMessage(message)}
-                        >
-                          <Trash2 className="mr-2 size-4" />
-                          Delete
-                        </ContextMenuItem>
-                      </ContextMenuContent>
-                    </ContextMenu>
-                  ) : (
-                    messageBubble
-                  )}
-
-                  <time
-                    dateTime={message.timestamp.toISOString()}
-                    className="mt-1 block whitespace-nowrap px-3 text-[10px] leading-none text-muted-foreground sm:text-xs"
-                  >
-                    {formatDateTime(message.timestamp)}
-                  </time>
-                </div>
-              </article>
+                message={message}
+                senderName={senderName}
+                senderImage={senderImage}
+                isMe={isMe}
+                isPageVisible={isPageVisible && Boolean(currentUser?.id)}
+                readAt={isMe ? readReceipts[message.serial] : undefined}
+                onRead={handleMessageRead}
+                onCopy={(item) => void handleCopyMessage(item)}
+                onDelete={(item) => void handleDeleteMessage(item)}
+                onEdit={handleEditMessage}
+              />
             );
           })}
         </div>

@@ -2,14 +2,13 @@
 
 import { useEffect } from "react";
 import Link from "next/link";
-import { CheckIcon, Copy, Pencil, Trash2 } from "lucide-react";
+import { CheckIcon, CheckCheckIcon, Copy, Pencil, Trash2 } from "lucide-react";
 import { useInView } from "react-intersection-observer";
 
 import { ChatMessageAction, type Message as AblyMessage } from "@ably/chat";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Bubble, BubbleContent, BubbleReactions } from "@/components/ui/bubble";
-import { Button } from "@/components/ui/button";
+import { Bubble, BubbleContent } from "@/components/ui/bubble";
 import {
   ContextMenu,
   ContextMenuContent,
@@ -36,7 +35,7 @@ type ChatBubbleMessageProps = {
   isMe: boolean;
   isPageVisible: boolean;
   readAt?: string;
-  onRead: (messageSerial: string) => void;
+  onRead: (messageSerial: string) => Promise<boolean>;
   onCopy: (message: AblyMessage) => void;
   onDelete: (message: AblyMessage) => void;
   onEdit: () => void;
@@ -85,14 +84,26 @@ export function ChatBubbleMessage({
 }: ChatBubbleMessageProps) {
   const { ref, inView } = useInView({
     threshold: 0.1,
-    triggerOnce: true,
   });
   const isDeleted = message.action === ChatMessageAction.MessageDelete;
 
   useEffect(() => {
-    if (!isMe && !isDeleted && inView && isPageVisible) {
-      onRead(message.serial);
-    }
+    if (isMe || isDeleted || !inView || !isPageVisible) return;
+
+    let cancelled = false;
+    let retry: ReturnType<typeof setTimeout> | undefined;
+    const saveRead = async () => {
+      const saved = await onRead(message.serial);
+      if (!saved && !cancelled) {
+        retry = setTimeout(() => void saveRead(), 4_000);
+      }
+    };
+    void saveRead();
+
+    return () => {
+      cancelled = true;
+      clearTimeout(retry);
+    };
   }, [inView, isDeleted, isMe, isPageVisible, message.serial, onRead]);
 
   const content = (
@@ -164,32 +175,36 @@ export function ChatBubbleMessage({
           ) : (
             content
           )}
-
-          {isMe && !isDeleted && readAt && (
-            <BubbleReactions>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon-xs"
-                    aria-label={`Read on ${formatReadTime(readAt)}`}
-                  >
-                    <CheckIcon />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>
-                  Read on {formatReadTime(readAt)}
-                </TooltipContent>
-              </Tooltip>
-            </BubbleReactions>
-          )}
         </Bubble>
 
-        <MessageFooter>
+        <MessageFooter className="gap-1">
           <time dateTime={message.timestamp.toISOString()}>
             {formatMessageTime(message.timestamp)}
           </time>
+          {isMe && !isDeleted && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span
+                  tabIndex={0}
+                  aria-label={
+                    readAt
+                      ? `Read on ${formatReadTime(readAt)}`
+                      : "Sent — no read receipt yet"
+                  }
+                  className={readAt ? "inline-flex text-sky-500" : "inline-flex"}
+                >
+                  {readAt ? (
+                    <CheckCheckIcon className="size-3.5" />
+                  ) : (
+                    <CheckIcon className="size-3.5" />
+                  )}
+                </span>
+              </TooltipTrigger>
+              <TooltipContent>
+                {readAt ? `Read on ${formatReadTime(readAt)}` : "Sent — no read receipt yet"}
+              </TooltipContent>
+            </Tooltip>
+          )}
         </MessageFooter>
       </MessageContent>
     </Message>

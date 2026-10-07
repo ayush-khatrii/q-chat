@@ -91,7 +91,7 @@ export default function Chat({
   const scrollAreaRef = useRef<HTMLDivElement | null>(null);
   const loadingHistoryRef = useRef(false);
   const initialHistoryRequestRef = useRef<unknown>(undefined);
-  const readRequestsRef = useRef(new Set<string>());
+  const readRequestsRef = useRef(new Map<string, Promise<boolean>>());
   const scrollAdjustmentRef = useRef<
     { type: "bottom" } | { type: "preserve"; previousHeight: number } | null
   >(null);
@@ -157,28 +157,32 @@ export default function Chat({
   }, [currentUser?.id, roomId]);
 
   const handleMessageRead = useCallback(
-    async (messageSerial: string) => {
-      if (!currentUser?.id || readRequestsRef.current.has(messageSerial)) {
-        return;
-      }
+    (messageSerial: string): Promise<boolean> => {
+      if (!currentUser?.id) return Promise.resolve(false);
+      const existing = readRequestsRef.current.get(messageSerial);
+      if (existing) return existing;
 
-      readRequestsRef.current.add(messageSerial);
+      const request = (async () => {
+        try {
+          const response = await fetch(`/api/rooms/${roomId}/reads`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            credentials: "include",
+            body: JSON.stringify({ messageSerial }),
+          });
 
-      try {
-        const response = await fetch(`/api/rooms/${roomId}/reads`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          credentials: "include",
-          body: JSON.stringify({ messageSerial }),
-        });
-
-        if (!response.ok) {
-          throw new Error("Unable to save read receipt.");
+          if (!response.ok) {
+            throw new Error("Unable to save read receipt.");
+          }
+          return true;
+        } catch (error) {
+          readRequestsRef.current.delete(messageSerial);
+          console.error("Error saving read receipt:", error);
+          return false;
         }
-      } catch (error) {
-        readRequestsRef.current.delete(messageSerial);
-        console.error("Error saving read receipt:", error);
-      }
+      })();
+      readRequestsRef.current.set(messageSerial, request);
+      return request;
     },
     [currentUser?.id, roomId],
   );

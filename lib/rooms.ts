@@ -23,7 +23,7 @@ export const DEFAULT_ROOM_THEME: RoomTheme = {
   surface: "#000000",
   outgoingBubble: "#ffffff",
   outgoingText: "#09090b",
-  incomingBubble: "#000000",
+  incomingBubble: "#262626",
   incomingText: "#fafafa",
   pattern: "none",
   patternColor: "#ffffff",
@@ -32,7 +32,14 @@ export const DEFAULT_ROOM_THEME: RoomTheme = {
 
 export function normalizeRoomTheme(value: unknown): RoomTheme {
   const parsed = roomThemeSchema.safeParse(value);
-  return parsed.success ? parsed.data : DEFAULT_ROOM_THEME;
+  if (!parsed.success) return DEFAULT_ROOM_THEME;
+
+  // Upgrade the old default without replacing customized room palettes.
+  const legacyDefault = { ...DEFAULT_ROOM_THEME, incomingBubble: "#000000" };
+  const isLegacyDefault = Object.entries(legacyDefault).every(
+    ([key, value]) => parsed.data[key as keyof RoomTheme].toLowerCase() === value,
+  );
+  return isLegacyDefault ? { ...DEFAULT_ROOM_THEME } : parsed.data;
 }
 
 export function normalizeCustomRoomCode(code?: string | null) {

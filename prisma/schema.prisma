@@ -31,7 +31,7 @@ model Room {
   id      String @id @default(cuid())
   code    String @unique
   name    String
-  theme   Json   @default("{\"surface\":\"#000000\",\"outgoingBubble\":\"#ffffff\",\"outgoingText\":\"#09090b\",\"incomingBubble\":\"#000000\",\"incomingText\":\"#fafafa\",\"pattern\":\"none\",\"patternColor\":\"#ffffff\",\"patternOpacity\":\"subtle\"}")
+  theme   Json   @default("{\"surface\":\"#000000\",\"outgoingBubble\":\"#ffffff\",\"outgoingText\":\"#09090b\",\"incomingBubble\":\"#262626\",\"incomingText\":\"#fafafa\",\"pattern\":\"none\",\"patternColor\":\"#ffffff\",\"patternOpacity\":\"subtle\"}")
   ownerId String
   owner   User   @relation("RoomOwner", fields: [ownerId], references: [id])
 

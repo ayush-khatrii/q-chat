@@ -7,6 +7,7 @@ import prisma from "@/lib/prisma";
 
 const readReceiptSchema = z.object({
   messageSerial: z.string().trim().min(1).max(512),
+  readAt: z.string().datetime().optional(),
 });
 
 async function getRoomMembership(roomId: string, userId: string) {
@@ -91,13 +92,17 @@ export async function POST(
       roomId,
       messageSerial: parsed.data.messageSerial,
       readerId: session.user.id,
+      readAt: parsed.data.readAt ? new Date(Math.min(Date.parse(parsed.data.readAt), Date.now())) : undefined,
     },
     update: {},
     select: { messageSerial: true, readAt: true },
   });
 
-  return NextResponse.json({
+  const event = {
     messageSerial: receipt.messageSerial,
     readAt: receipt.readAt.toISOString(),
-  });
+    readerId: session.user.id,
+  };
+
+  return NextResponse.json(event);
 }

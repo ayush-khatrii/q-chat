@@ -24,6 +24,7 @@ import { useMessages, useTyping } from "@ably/chat/react";
 
 import { authClient } from "@/lib/auth-client";
 import { initFcm } from "@/lib/fcm";
+import { useReadReceipts } from "@/hooks/use-read-receipts";
 import {
   getRoomThemeStyle,
   useRoomTheme,
@@ -59,11 +60,6 @@ function getMessageMetadata(message: AblyMessage): MessageMetadata {
   };
 }
 
-type ReadReceipt = {
-  messageSerial: string;
-  readAt: string;
-};
-
 export default function Chat({
   roomId,
   roomCode,
@@ -84,14 +80,15 @@ export default function Chat({
   const [historyLoaded, setHistoryLoaded] = useState(false);
   const [historyError, setHistoryError] = useState<string | null>(null);
   const [historyRetry, setHistoryRetry] = useState(0);
-  const [readReceipts, setReadReceipts] = useState<Record<string, string>>({});
+  const { readReceipts, markRead: handleMessageRead } = useReadReceipts(roomId, currentUser?.id);
   const [isPageVisible, setIsPageVisible] = useState(true);
 
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const scrollAreaRef = useRef<HTMLDivElement | null>(null);
   const loadingHistoryRef = useRef(false);
   const initialHistoryRequestRef = useRef<unknown>(undefined);
-  const readRequestsRef = useRef(new Map<string, Promise<boolean>>());
+  const receivedMessageSerialsRef = useRef(new Set<string>());
+  const renderedMessageSerialsRef = useRef(new Set<string>());
   const scrollAdjustmentRef = useRef<
     { type: "bottom" } | { type: "preserve"; previousHeight: number } | null
   >(null);
@@ -102,6 +99,7 @@ export default function Chat({
   const { sendMessage, historyBeforeSubscribe, deleteMessage } = useMessages({
     listener: (event: ChatMessageEvent) => {
       if (event.type === ChatMessageEventType.Created) {
+        receivedMessageSerialsRef.current.add(event.message.serial);
         setMessages((previous) => {
           if (
             previous.some((message) => message.serial === event.message.serial)
@@ -131,62 +129,6 @@ export default function Chat({
     [],
   );
 
-  const refreshReadReceipts = useCallback(async () => {
-    if (!currentUser?.id) return;
-
-    try {
-      const response = await fetch(`/api/rooms/${roomId}/reads`, {
-        credentials: "include",
-        cache: "no-store",
-      });
-
-      if (!response.ok) return;
-
-      const payload = (await response.json()) as { receipts: ReadReceipt[] };
-      setReadReceipts(
-        Object.fromEntries(
-          payload.receipts.map((receipt) => [
-            receipt.messageSerial,
-            receipt.readAt,
-          ]),
-        ),
-      );
-    } catch (error) {
-      console.error("Error loading read receipts:", error);
-    }
-  }, [currentUser?.id, roomId]);
-
-  const handleMessageRead = useCallback(
-    (messageSerial: string): Promise<boolean> => {
-      if (!currentUser?.id) return Promise.resolve(false);
-      const existing = readRequestsRef.current.get(messageSerial);
-      if (existing) return existing;
-
-      const request = (async () => {
-        try {
-          const response = await fetch(`/api/rooms/${roomId}/reads`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            credentials: "include",
-            body: JSON.stringify({ messageSerial }),
-          });
-
-          if (!response.ok) {
-            throw new Error("Unable to save read receipt.");
-          }
-          return true;
-        } catch (error) {
-          readRequestsRef.current.delete(messageSerial);
-          console.error("Error saving read receipt:", error);
-          return false;
-        }
-      })();
-      readRequestsRef.current.set(messageSerial, request);
-      return request;
-    },
-    [currentUser?.id, roomId],
-  );
-
   useEffect(() => {
     const handleVisibilityChange = () => {
       setIsPageVisible(document.visibilityState === "visible");
@@ -198,28 +140,6 @@ export default function Chat({
     return () =>
       document.removeEventListener("visibilitychange", handleVisibilityChange);
   }, []);
-
-  useEffect(() => {
-    if (!currentUser?.id) return;
-
-    readRequestsRef.current.clear();
-    setReadReceipts({});
-    void refreshReadReceipts();
-
-    const interval = window.setInterval(() => {
-      if (document.visibilityState === "visible") {
-        void refreshReadReceipts();
-      }
-    }, 4_000);
-
-    const handleFocus = () => void refreshReadReceipts();
-    window.addEventListener("focus", handleFocus);
-
-    return () => {
-      window.clearInterval(interval);
-      window.removeEventListener("focus", handleFocus);
-    };
-  }, [currentUser?.id, refreshReadReceipts]);
 
   useEffect(() => {
     if (
@@ -348,12 +268,22 @@ export default function Chat({
   useLayoutEffect(() => {
     const adjustment = scrollAdjustmentRef.current;
     const viewport = getScrollViewport();
+    const hasNewMessage = messages.some(
+      (message) =>
+        receivedMessageSerialsRef.current.has(message.serial) &&
+        !renderedMessageSerialsRef.current.has(message.serial),
+    );
+    receivedMessageSerialsRef.current.clear();
+    renderedMessageSerialsRef.current = new Set(
+      messages.map((message) => message.serial),
+    );
 
-    if (!adjustment || !viewport) return;
+    if (!viewport || (!hasNewMessage && !adjustment)) return;
 
-    if (adjustment.type === "bottom") {
+    // Live messages take priority even while older history is loading.
+    if (hasNewMessage || adjustment?.type === "bottom") {
       viewport.scrollTop = viewport.scrollHeight;
-    } else {
+    } else if (adjustment?.type === "preserve") {
       viewport.scrollTop += viewport.scrollHeight - adjustment.previousHeight;
     }
 

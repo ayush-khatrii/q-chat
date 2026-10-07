@@ -2,7 +2,7 @@
 
 import { useEffect } from "react";
 import Link from "next/link";
-import { CheckIcon, CheckCheckIcon, Copy, Pencil, Trash2 } from "lucide-react";
+import { Ban, CheckIcon, CheckCheckIcon, Copy, Pencil, Trash2 } from "lucide-react";
 import { useInView } from "react-intersection-observer";
 
 import { ChatMessageAction, type Message as AblyMessage } from "@ably/chat";
@@ -108,6 +108,12 @@ export function ChatBubbleMessage({
 
   const content = (
     <BubbleContent
+      className={
+        isDeleted
+          ? "flex cursor-not-allowed select-none items-center gap-1.5 italic opacity-40"
+          : undefined
+      }
+      aria-disabled={isDeleted || undefined}
       style={
         isDeleted
           ? undefined
@@ -121,7 +127,14 @@ export function ChatBubbleMessage({
             }
       }
     >
-      {isDeleted ? `Message deleted by ${senderName}` : message.text}
+      {isDeleted ? (
+        <>
+          <Ban className="size-3.5 shrink-0" aria-hidden="true" />
+          <span>Message deleted by {senderName}</span>
+        </>
+      ) : (
+        message.text
+      )}
     </BubbleContent>
   );
 

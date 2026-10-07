@@ -2,6 +2,8 @@ import * as Ably from "ably";
 import { NextResponse } from "next/server";
 import { headers } from "next/headers";
 import { auth } from "@/lib/auth";
+import prisma from "@/lib/prisma";
+import { readReceiptChannel } from "@/lib/read-receipts";
 
 export async function GET() {
   try {
@@ -23,11 +25,18 @@ export async function GET() {
     }
 
     const client = new Ably.Rest(apiKey);
+    const memberships = await prisma.roomMember.findMany({
+      where: { userId: session.user.id },
+      select: { roomId: true },
+    });
 
     const tokenRequestData = await client.auth.createTokenRequest({
       clientId: session.user.id,
       capability: JSON.stringify({
         "qchat:*": ["*"],
+        ...Object.fromEntries(
+          memberships.map(({ roomId }) => [readReceiptChannel(roomId), ["subscribe", "publish"]]),
+        ),
       }),
     });
 

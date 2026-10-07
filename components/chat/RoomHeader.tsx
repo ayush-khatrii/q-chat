@@ -219,9 +219,9 @@ export default function RoomHeader({ room, members }: RoomHeaderProps) {
             <MessagesSquare className="size-4 sm:size-5" />
           </div>
 
-          <div className="min-w-0">
+          <div className="min-w-0 flex-1">
             <div className="flex min-w-0 items-center gap-1.5 sm:gap-2">
-              <h1 className="truncate font-mono text-sm font-semibold tracking-normal">
+              <h1 className="truncate text-base font-semibold leading-tight tracking-tight sm:text-lg">
                 {displayName}
               </h1>
               {session && !hasActiveRoom && hasLoaded ? (
@@ -235,16 +235,14 @@ export default function RoomHeader({ room, members }: RoomHeaderProps) {
                   <Plus />
                 </Button>
               ) : null}
-              <span
-                className={
-                  isResolvingRoom
-                    ? "animate-pulse text-muted-foreground"
-                    : undefined
-                }
-              >
-                {displayCode}
-              </span>
             </div>
+            <p
+              className={`truncate font-mono text-[0.625rem] leading-tight text-muted-foreground sm:text-xs ${
+                isResolvingRoom ? "animate-pulse" : ""
+              }`}
+            >
+              {displayCode}
+            </p>
           </div>
         </div>
 
@@ -270,15 +268,13 @@ export default function RoomHeader({ room, members }: RoomHeaderProps) {
                 <MessagesSquare className="size-4" />
               </div>
               <div className="min-w-0 flex-1">
-                <p className="truncate font-mono text-sm font-semibold tracking-tight">
-                  {displayCode}
+                <p className="truncate text-base font-semibold leading-tight tracking-tight">
+                  {displayName}
                 </p>
-                <p className="truncate text-xs text-muted-foreground">
-                  {isResolvingRoom
-                    ? room.name
-                    : hasActiveRoom
-                      ? `${displayName} · ${memberCount} members`
-                      : "Create a room to save a private QC code"}
+                <p className="truncate font-mono text-[0.6875rem] text-muted-foreground">
+                  {hasActiveRoom
+                    ? `${displayCode} · ${memberCount} members`
+                    : "Create a room to save a private QC code"}
                 </p>
               </div>
             </div>

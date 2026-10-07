@@ -6,7 +6,6 @@ import type { ReactNode } from "react";
 import { useEffect, useState } from "react";
 import { useTheme } from "next-themes";
 import {
-  Bell,
   Check,
   ChevronRight,
   Code2,
@@ -15,7 +14,6 @@ import {
   Folder,
   Globe,
   Info,
-  Languages,
   LogIn,
   LogOut,
   Menu,
@@ -28,7 +26,6 @@ import {
   ShieldCheck,
   Trash2,
   UserMinus,
-  UserPlus,
   Users,
   type LucideIcon,
 } from "lucide-react";
@@ -105,8 +102,10 @@ export default function RoomHeader({ room, members }: RoomHeaderProps) {
   const [joinRoomOpen, setJoinRoomOpen] = useState(false);
   const [roomActionOpen, setRoomActionOpen] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [shareStatus, setShareStatus] = useState<
+    "idle" | "shared" | "copied"
+  >("idle");
   const [mounted, setMounted] = useState(false);
-  const [notifications, setNotifications] = useState(true);
   const [isRemovingRoom, setIsRemovingRoom] = useState(false);
   const [removingMemberId, setRemovingMemberId] = useState<string | null>(null);
   const [memberToRemove, setMemberToRemove] =
@@ -134,6 +133,39 @@ export default function RoomHeader({ room, members }: RoomHeaderProps) {
     await navigator.clipboard.writeText(currentRoom.code);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
+  };
+
+  const shareRoom = async () => {
+    const inviteUrl = `${window.location.origin}/chat/${encodeURIComponent(currentRoom.code)}`;
+    const shareData = {
+      title: `Join ${currentRoom.name} on QChat`,
+      text: `Join my QChat room with code ${currentRoom.code}.`,
+      url: inviteUrl,
+    };
+
+    try {
+      if (typeof navigator.share === "function") {
+        await navigator.share(shareData);
+        setShareStatus("shared");
+      } else {
+        await navigator.clipboard.writeText(inviteUrl);
+        setShareStatus("copied");
+      }
+
+      setTimeout(() => setShareStatus("idle"), 2000);
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") {
+        return;
+      }
+
+      try {
+        await navigator.clipboard.writeText(inviteUrl);
+        setShareStatus("copied");
+        setTimeout(() => setShareStatus("idle"), 2000);
+      } catch {
+        setRoomNotice("Unable to share this room. Copy the room code instead.");
+      }
+    }
   };
 
   const handleCreateRoom = async (name: string, customCode?: string) => {
@@ -378,7 +410,17 @@ export default function RoomHeader({ room, members }: RoomHeaderProps) {
                         label={copied ? "Copied!" : "Copy room code"}
                         onClick={copyRoom}
                       />
-                      <MenuButton icon={Share2} label="Share invite link" />
+                      <MenuButton
+                        icon={shareStatus === "idle" ? Share2 : Check}
+                        label={
+                          shareStatus === "shared"
+                            ? "Shared!"
+                            : shareStatus === "copied"
+                              ? "Invite link copied!"
+                              : "Share invite link"
+                        }
+                        onClick={() => void shareRoom()}
+                      />
                     </>
                   ) : null}
                   <MenuButton
@@ -398,17 +440,12 @@ export default function RoomHeader({ room, members }: RoomHeaderProps) {
                     }}
                   />
                   {hasActiveRoom ? (
-                    <>
-                      <MenuButton icon={UserPlus} label="Invite members" />
-                      <MenuButton icon={Settings} label="Room settings" />
-                      <MenuButton icon={ShieldCheck} label="Admin controls" />
-                      <MenuButton
-                        icon={currentRoom?.isOwner ? Trash2 : LogOut}
-                        label={currentRoom?.isOwner ? "Delete room" : "Leave room"}
-                        tone="destructive"
-                        onClick={() => setRoomActionOpen(true)}
-                      />
-                    </>
+                    <MenuButton
+                      icon={currentRoom?.isOwner ? Trash2 : LogOut}
+                      label={currentRoom?.isOwner ? "Delete room" : "Leave room"}
+                      tone="destructive"
+                      onClick={() => setRoomActionOpen(true)}
+                    />
                   ) : null}
                 </MenuSection>
 
@@ -431,22 +468,15 @@ export default function RoomHeader({ room, members }: RoomHeaderProps) {
                       setTheme(value ? "dark" : "light")
                     }
                   />
-                  <ToggleRow
-                    icon={Bell}
-                    label="Notifications"
-                    checked={notifications}
-                    onCheckedChange={setNotifications}
-                  />
                   <MenuLink
                     icon={Palette}
                     label="Chat appearance"
                     href={`/appearance?room=${encodeURIComponent(currentRoom.code)}`}
                   />
-                  <MenuButton icon={Languages} label="Language" />
                 </MenuSection>
 
                 <MenuSection icon={Info} title="About">
-                  <MenuButton icon={Info} label="About QChat" />
+                  <MenuLink icon={Info} label="About QChat" href="/about" />
                   <MenuLink
                     icon={ShieldCheck}
                     label="Privacy policy"

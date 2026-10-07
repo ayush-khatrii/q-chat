@@ -221,16 +221,8 @@ export default function RoomHeader({ room, members }: RoomHeaderProps) {
 
           <div className="min-w-0">
             <div className="flex min-w-0 items-center gap-1.5 sm:gap-2">
-              <h1 className="truncate font-mono text-sm font-semibold tracking-normal sm:text-base">
-                <span
-                  className={
-                    isResolvingRoom
-                      ? "animate-pulse text-muted-foreground"
-                      : undefined
-                  }
-                >
-                  {displayCode}
-                </span>
+              <h1 className="truncate font-mono text-sm font-semibold tracking-normal">
+                {displayName}
               </h1>
               {session && !hasActiveRoom && hasLoaded ? (
                 <Button
@@ -243,10 +235,16 @@ export default function RoomHeader({ room, members }: RoomHeaderProps) {
                   <Plus />
                 </Button>
               ) : null}
+              <span
+                className={
+                  isResolvingRoom
+                    ? "animate-pulse text-muted-foreground"
+                    : undefined
+                }
+              >
+                {displayCode}
+              </span>
             </div>
-            <p className="truncate text-[0.6875rem] text-muted-foreground sm:text-xs">
-              {displayName}
-            </p>
           </div>
         </div>
 
@@ -279,8 +277,8 @@ export default function RoomHeader({ room, members }: RoomHeaderProps) {
                   {isResolvingRoom
                     ? room.name
                     : hasActiveRoom
-                    ? `${displayName} · ${memberCount} members`
-                    : "Create a room to save a private QC code"}
+                      ? `${displayName} · ${memberCount} members`
+                      : "Create a room to save a private QC code"}
                 </p>
               </div>
             </div>
@@ -297,8 +295,8 @@ export default function RoomHeader({ room, members }: RoomHeaderProps) {
                         {hasActiveRoom
                           ? "Current room membership"
                           : isResolvingRoom
-                          ? room.name
-                          : "The current chat is visible, but no database room has been created yet."}
+                            ? room.name
+                            : "The current chat is visible, but no database room has been created yet."}
                       </p>
                     </div>
                     <Badge variant={hasActiveRoom ? "secondary" : "outline"}>
@@ -341,7 +339,7 @@ export default function RoomHeader({ room, members }: RoomHeaderProps) {
                               <Badge variant="outline">Member</Badge>
                             )}
                             {currentRoom.isOwner &&
-                            member.userId !== currentRoom.ownerId ? (
+                              member.userId !== currentRoom.ownerId ? (
                               <Button
                                 type="button"
                                 variant="destructive"
@@ -571,7 +569,7 @@ export default function RoomHeader({ room, members }: RoomHeaderProps) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </section>
+    </section >
   );
 }
 

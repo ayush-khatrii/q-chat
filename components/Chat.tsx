@@ -429,7 +429,7 @@ export default function Chat({
         <div
           role="log"
           aria-live="polite"
-          className="mx-auto flex w-full max-w-5xl min-w-0 flex-col gap-4 px-3 py-4 sm:px-5 sm:py-6"
+          className="mx-auto flex w-full max-w-3xl min-w-0 flex-col gap-4 px-3 py-4 sm:px-5 sm:py-6"
         >
           {hasMore && !loadingHistory && (
             <div className="flex justify-center py-2">

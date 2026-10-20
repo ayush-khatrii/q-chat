@@ -131,3 +131,18 @@
     @apply font-sans;
   }
 }
+/* Attachment title shimmer is decorative and respects reduced motion. */
+@keyframes attachment-shimmer {
+  0%, 100% { opacity: 1; }
+  50% { opacity: .45; }
+}
+[data-slot="attachment"][data-state="uploading"] [data-slot="attachment-title"],
+[data-slot="attachment"][data-state="processing"] [data-slot="attachment-title"] {
+  animation: attachment-shimmer 1.5s ease-in-out infinite;
+}
+[data-slot="attachment-group"] {
+  mask-image: linear-gradient(to right, transparent, black 8px, black calc(100% - 8px), transparent);
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-slot="attachment-title"] { animation: none !important; }
+}

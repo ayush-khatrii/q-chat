@@ -8,9 +8,17 @@ import {
   useRef,
   useState,
 } from "react";
-import { Send } from "lucide-react";
+import { Paperclip, Send } from "lucide-react";
 import { toast } from "sonner";
 
+import { AttachmentQueue } from "@/components/chat/AttachmentQueue";
+import { useAttachmentUploads } from "@/hooks/use-attachment-uploads";
+import {
+  ATTACHMENT_ACCEPT,
+  ATTACHMENT_CONFIG,
+  attachmentIds,
+} from "@/constants/attachments";
+import { attachmentRequest } from "@/lib/attachments/client";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Textarea } from "@/components/ui/textarea";
@@ -74,13 +82,21 @@ export default function Chat({
 
   const [messages, setMessages] = useState<AblyMessage[]>([]);
   const [draft, setDraft] = useState("");
+  const uploads = useAttachmentUploads(roomId);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const sendingRef = useRef(false);
+  const [sending, setSending] = useState(false);
+  const pendingMessage = useRef<AblyMessage | null>(null);
   const [sendError, setSendError] = useState<string | null>(null);
   const [hasMore, setHasMore] = useState(false);
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [historyLoaded, setHistoryLoaded] = useState(false);
   const [historyError, setHistoryError] = useState<string | null>(null);
   const [historyRetry, setHistoryRetry] = useState(0);
-  const { readReceipts, markRead: handleMessageRead } = useReadReceipts(roomId, currentUser?.id);
+  const { readReceipts, markRead: handleMessageRead } = useReadReceipts(
+    roomId,
+    currentUser?.id,
+  );
   const [isPageVisible, setIsPageVisible] = useState(true);
 
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
@@ -120,6 +136,43 @@ export default function Chat({
       }
     },
   });
+
+  useEffect(() => {
+    if (!currentUser?.id) return;
+    const replay = () => {
+      try {
+        const prefix = `qchat:attachment-bind:${currentUser.id}:${roomId}:`;
+        for (const key of Object.keys(localStorage).filter((key) =>
+          key.startsWith(prefix),
+        )) {
+          const value = JSON.parse(localStorage.getItem(key) ?? "null");
+          if (
+            !value ||
+            typeof value.serial !== "string" ||
+            !Array.isArray(value.ids)
+          )
+            continue;
+          void attachmentRequest("/api/attachments", {
+            action: "resolve",
+            roomId,
+            serial: value.serial,
+            ids: value.ids,
+          })
+            .then(() => localStorage.removeItem(key))
+            .catch(() => {});
+        }
+      } catch {
+        /* Attachment cards also retry binding when history is loaded. */
+      }
+    };
+    replay();
+    window.addEventListener("online", replay);
+    const interval = setInterval(replay, 30_000);
+    return () => {
+      window.removeEventListener("online", replay);
+      clearInterval(interval);
+    };
+  }, [currentUser?.id, roomId]);
 
   const getScrollViewport = useCallback(
     () =>
@@ -329,13 +382,21 @@ export default function Chat({
           description: "Deleted by user",
         });
 
+        const ids = attachmentIds(message.metadata);
+        if (ids.length)
+          await attachmentRequest("/api/attachments", {
+            action: "resolve",
+            roomId,
+            serial: message.serial,
+            ids,
+          });
         toast.success("Message deleted");
       } catch (error) {
         console.error("Delete error:", error);
         toast.error("Failed to delete message");
       }
     },
-    [deleteMessage],
+    [deleteMessage, roomId],
   );
 
   const handleEditMessage = useCallback(() => {
@@ -370,25 +431,70 @@ export default function Chat({
 
     const text = draft.trim();
 
-    if (!text) return;
-
-    setDraft("");
+    if (
+      sendingRef.current ||
+      (!text && !uploads.files.length && !pendingMessage.current) ||
+      !uploads.ready
+    )
+      return;
+    if (
+      uploads.files.some(
+        (file) => file.expiresAt && Date.parse(file.expiresAt) <= Date.now(),
+      )
+    ) {
+      setSendError("An unsent upload expired. Remove it or retry the upload.");
+      return;
+    }
+    sendingRef.current = true;
+    setSending(true);
     setSendError(null);
-
     try {
-      await sendMessage({
-        text,
-        metadata: {
-          displayName: currentUser?.name ?? currentUser?.email ?? "User",
-          image: currentUser?.image ?? "",
-        },
-      });
+      const ids = uploads.files.flatMap((file) => (file.id ? [file.id] : []));
+      // Retain the sent message until binding succeeds. Retrying must not send it twice.
+      const message =
+        pendingMessage.current ??
+        (await sendMessage({
+          text,
+          metadata: {
+            displayName: currentUser?.name ?? currentUser?.email ?? "User",
+            image: currentUser?.image ?? "",
+            ...(ids.length ? { attachmentIds: ids } : {}),
+          },
+        }));
+      pendingMessage.current = message;
+      if (ids.length) {
+        const pendingKey = `qchat:attachment-bind:${currentUser?.id}:${roomId}:${message.serial}`;
+        try {
+          localStorage.setItem(
+            pendingKey,
+            JSON.stringify({ serial: message.serial, ids }),
+          );
+        } catch {
+          /* Storage can be unavailable in private browsing. */
+        }
+        await attachmentRequest("/api/attachments", {
+          action: "resolve",
+          roomId,
+          serial: message.serial,
+          ids,
+        });
+        try {
+          localStorage.removeItem(pendingKey);
+        } catch {
+          /* Best effort. */
+        }
+      }
+      pendingMessage.current = null;
+      uploads.clear();
+      setDraft("");
     } catch (error) {
-      setDraft(text);
       setSendError(
         error instanceof Error ? error.message : "Unable to send message.",
       );
       return;
+    } finally {
+      sendingRef.current = false;
+      setSending(false);
     }
 
     void stop().catch(console.error);
@@ -403,7 +509,7 @@ export default function Chat({
           roomCode,
           senderId: currentUser.id,
           title: currentUser.name ?? currentUser.email ?? "Someone",
-          body: text,
+          body: text || "Shared an attachment",
         }),
       }).catch(console.error);
 
@@ -505,6 +611,7 @@ export default function Chat({
             return (
               <ChatBubbleMessage
                 key={message.serial}
+                roomId={roomId}
                 message={message}
                 senderName={senderName}
                 senderImage={senderImage}
@@ -536,10 +643,45 @@ export default function Chat({
           onSubmit={handleSubmit}
           className="border-t border-white/10 bg-black/15 px-3 py-3 backdrop-blur-md sm:px-4"
         >
+          <AttachmentQueue
+            files={uploads.files}
+            remove={uploads.remove}
+            retry={uploads.retry}
+            disabled={sending || Boolean(pendingMessage.current)}
+          />
+          <input
+            ref={fileInputRef}
+            type="file"
+            multiple
+            accept={ATTACHMENT_ACCEPT}
+            className="sr-only"
+            tabIndex={-1}
+            aria-label="Choose attachments"
+            onChange={(event) => {
+              if (event.target.files) uploads.add(event.target.files);
+              event.target.value = "";
+            }}
+          />
           <div className="mx-auto flex w-full max-w-5xl min-w-0 items-end gap-2">
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="size-11 shrink-0"
+              aria-label="Add attachments"
+              disabled={
+                sending ||
+                Boolean(pendingMessage.current) ||
+                uploads.files.length >= ATTACHMENT_CONFIG.maxFilesPerMessage
+              }
+              onClick={() => fileInputRef.current?.click()}
+            >
+              <Paperclip />
+            </Button>
             <Textarea
               ref={textareaRef}
               value={draft}
+              disabled={sending || Boolean(pendingMessage.current)}
               rows={1}
               placeholder="Type something…"
               onChange={handleChange}
@@ -556,8 +698,18 @@ export default function Chat({
             <Button
               type="submit"
               size="icon"
-              disabled={!draft.trim()}
-              aria-label="Send message"
+              disabled={
+                sending ||
+                !uploads.ready ||
+                (!draft.trim() &&
+                  !uploads.files.length &&
+                  !pendingMessage.current)
+              }
+              aria-label={
+                pendingMessage.current
+                  ? "Finish sending attachments"
+                  : "Send message"
+              }
               className="size-11 shrink-0 rounded-full"
             >
               <Send className="size-4" />

@@ -196,6 +196,7 @@ export function useRooms(enabled = true, cacheScope?: string | null) {
       setHasLoaded(true);
       setError(null);
 
+      window.dispatchEvent(new Event("qchat:membership-changed"));
       return payload.room;
     } catch (createError) {
       const message =
@@ -240,6 +241,7 @@ export function useRooms(enabled = true, cacheScope?: string | null) {
       setHasLoaded(true);
       setError(null);
 
+      window.dispatchEvent(new Event("qchat:membership-changed"));
       return payload && "action" in payload ? payload.action : "deleted";
     } catch (removeError) {
       const message =
@@ -286,6 +288,7 @@ export function useRooms(enabled = true, cacheScope?: string | null) {
       setHasLoaded(true);
       setError(null);
 
+      window.dispatchEvent(new Event("qchat:membership-changed"));
       return payload.room;
     } catch (joinError) {
       const message =

@@ -7,14 +7,15 @@ QChat is a real-time, room-based chat app built with Next.js, Ably Chat, and Pos
 - Google sign-in through Better Auth.
 - Create rooms with generated or custom `QC-` codes and join by code.
 - Two members per room, including the creator.
-- Real-time text messages, typing indicators, and online presence.
+- Real-time messages, typing indicators, and online presence.
 - Paginated message history, with older messages loaded on scroll or by button.
 - Read receipts with live updates and database persistence.
 - Copy and delete messages.
 - Custom room colors and background patterns.
 - Browser push notifications through Firebase Cloud Messaging (FCM).
+- Private Cloudflare R2 file attachments, previews, and 24-hour expiry with hourly QStash cleanup.
 
-Message editing currently shows a “coming soon” notice. Attachment models exist in the database schema, but the current chat composer sends text messages.
+Message editing currently shows a “coming soon” notice. See the [attachment setup guide](docs/attachments.md) to configure R2, the required environment variables, and scheduled cleanup.
 
 ## Tech stack
 
@@ -27,6 +28,7 @@ Message editing currently shows a “coming soon” notice. Attachment models ex
 | Database | PostgreSQL, Prisma 7, PostgreSQL driver adapter |
 | Client data fetching | TanStack Query |
 | Notifications | Firebase browser SDK and Firebase Admin SDK |
+| File attachments | Private Cloudflare R2 storage and Upstash QStash cleanup |
 
 ## Getting started
 
@@ -145,13 +147,13 @@ Message-history availability depends on your Ably configuration and service limi
 ```text
 app/
   (root)/            Chat, profile, appearance, and information pages
-  api/               Auth, Ably tokens, rooms, receipts, users, and FCM endpoints
+  api/               Auth, Ably tokens, attachments, rooms, receipts, users, and FCM endpoints
 components/
-  chat/              Room UI, message bubbles, and appearance controls
+  chat/              Room UI, message bubbles, attachments, and appearance controls
   auth/              Google sign-in and account UI
   ui/                Shared UI components
 hooks/               Room data and read-receipt hooks
-lib/                 Auth, database, Firebase, room, and receipt utilities
+lib/                 Auth, attachments, database, Firebase, room, and receipt utilities
 prisma/              Database schema and migration history
 providers/           Ably and TanStack Query providers
 public/              Static assets and Firebase messaging service worker

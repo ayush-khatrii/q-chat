@@ -45,3 +45,6 @@ next-env.d.ts
 
 /app/generated/prisma
 .env
+
+# Safe setup template; real environment files remain ignored.
+!.env.example

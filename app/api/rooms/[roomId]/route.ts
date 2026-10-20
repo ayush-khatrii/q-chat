@@ -46,6 +46,10 @@ export async function DELETE(
 
   if (room.ownerId === user.id) {
     await prisma.$transaction([
+      prisma.attachmentUpload.updateMany({
+        where: { roomId, deletedAt: null },
+        data: { state: "deleted", expiresAt: new Date() },
+      }),
       prisma.roomMember.deleteMany({
         where: {
           roomId,

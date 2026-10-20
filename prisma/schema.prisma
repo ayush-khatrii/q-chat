@@ -161,3 +161,34 @@ model FcmToken {
   token     String   @unique
   createdAt DateTime @default(now())
 }
+
+// No cascading relations: cleanup must still find objects after a room is deleted.
+model AttachmentUpload {
+  id             String   @id @default(cuid())
+  ownerId        String
+  roomId         String
+  objectKey      String   @unique
+  uploadId       String?
+  name           String
+  mimeType       String
+  size           Int
+  state          String   @default("uploading")
+  messageSerial  String?
+  sentAt         DateTime?
+  expiresAt      DateTime
+  deletedAt      DateTime?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([expiresAt, deletedAt])
+  @@index([roomId, messageSerial])
+  @@index([ownerId, createdAt])
+}
+
+model AttachmentRateLimit {
+  key       String   @id
+  count     Int      @default(1)
+  expiresAt DateTime
+
+  @@index([expiresAt])
+}

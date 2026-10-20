@@ -45,7 +45,7 @@ test('receipt endpoint only persists and permissions allow room-scoped realtime 
     if (id === '@/lib/prisma') return { __esModule: true, default: {
       roomMember: {
         findUnique: async () => member ? { id: 'membership' } : null,
-        findMany: async () => [{ roomId: 'room' }],
+        findMany: async () => [{ roomId: 'room', room: { code: 'CODE' } }],
       },
       messageRead: { upsert: async (args) => {
         assert.equal(args.create.readAt.toISOString(), readAt);
@@ -86,6 +86,8 @@ test('receipt endpoint only persists and permissions allow room-scoped realtime 
     const capabilities = JSON.parse(token.capability);
     assert.equal(token.clientId, 'reader');
     assert.deepEqual(capabilities['qchat-reads:room'], ['subscribe', 'publish']);
+    assert.equal(capabilities['qchat:*'], undefined);
+    assert.ok(capabilities['qchat:CODE::$chat'].includes('message-delete-own'));
     assert.equal(capabilities['qchat-reads:*'], undefined);
     assert.equal(capabilities['qchat-reads:another-room'], undefined);
   } finally {

@@ -59,6 +59,22 @@ function AblyConnectedProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
+    const refresh = () => {
+      void realtimeClient.auth.authorize().catch(() => {});
+    };
+    // Server checks membership on every refresh. A removed member's old token
+    // expires within one minute; attachment URLs require membership immediately.
+    const interval = window.setInterval(refresh, 45_000);
+    window.addEventListener("qchat:membership-changed", refresh);
+    window.addEventListener("focus", refresh);
+    return () => {
+      window.clearInterval(interval);
+      window.removeEventListener("qchat:membership-changed", refresh);
+      window.removeEventListener("focus", refresh);
+    };
+  }, [realtimeClient]);
+
+  useEffect(() => {
     if (disposeTimer.current !== null) {
       window.clearTimeout(disposeTimer.current);
       disposeTimer.current = null;

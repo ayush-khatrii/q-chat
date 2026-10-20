@@ -1,8 +1,16 @@
 "use client";
 
 import { useEffect } from "react";
+import { MessageAttachments } from "@/components/chat/MessageAttachments";
 import Link from "next/link";
-import { Ban, CheckIcon, CheckCheckIcon, Copy, Pencil, Trash2 } from "lucide-react";
+import {
+  Ban,
+  CheckIcon,
+  CheckCheckIcon,
+  Copy,
+  Pencil,
+  Trash2,
+} from "lucide-react";
 import { useInView } from "react-intersection-observer";
 
 import { ChatMessageAction, type Message as AblyMessage } from "@ably/chat";
@@ -29,6 +37,7 @@ import {
 } from "@/components/ui/tooltip";
 
 type ChatBubbleMessageProps = {
+  roomId: string;
   message: AblyMessage;
   senderName: string;
   senderImage?: string | null;
@@ -71,6 +80,7 @@ function formatReadTime(value: string) {
 }
 
 export function ChatBubbleMessage({
+  roomId,
   message,
   senderName,
   senderImage,
@@ -133,7 +143,14 @@ export function ChatBubbleMessage({
           <span>Message deleted by {senderName}</span>
         </>
       ) : (
-        message.text
+        <>
+          {message.text && <span>{message.text}</span>}
+          <MessageAttachments
+            roomId={roomId}
+            serial={message.serial}
+            metadata={message.metadata}
+          />
+        </>
       )}
     </BubbleContent>
   );
@@ -204,7 +221,9 @@ export function ChatBubbleMessage({
                       ? `Read on ${formatReadTime(readAt)}`
                       : "Sent — no read receipt yet"
                   }
-                  className={readAt ? "inline-flex text-sky-500" : "inline-flex"}
+                  className={
+                    readAt ? "inline-flex text-sky-500" : "inline-flex"
+                  }
                 >
                   {readAt ? (
                     <CheckCheckIcon className="size-3.5" />
@@ -214,7 +233,9 @@ export function ChatBubbleMessage({
                 </span>
               </TooltipTrigger>
               <TooltipContent>
-                {readAt ? `Read on ${formatReadTime(readAt)}` : "Sent — no read receipt yet"}
+                {readAt
+                  ? `Read on ${formatReadTime(readAt)}`
+                  : "Sent — no read receipt yet"}
               </TooltipContent>
             </Tooltip>
           )}

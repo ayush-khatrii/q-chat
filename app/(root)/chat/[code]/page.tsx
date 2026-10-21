@@ -8,7 +8,7 @@ import RoomSkeleton from "@/components/chat/RoomSkeleton";
 import AppAblyProvider from "@/providers/AblyProvider";
 import { auth } from "@/lib/auth";
 import { getRoomForMember } from "@/lib/room-service";
-import { normalizeCustomRoomCode } from "@/lib/rooms";
+import { parseInviteCode, inviteDestination } from "@/lib/invites";
 
 type RoomPageProps = {
   params: Promise<{ code: string }>;
@@ -27,22 +27,18 @@ async function RoomContent({ params }: RoomPageProps) {
     headers: await headers(),
   });
 
-  if (!session?.user) {
-    redirect("/");
-  }
-
   const { code } = await params;
-  const normalizedCode = normalizeCustomRoomCode(decodeURIComponent(code));
+  const normalizedCode = parseInviteCode(code);
 
   if (!normalizedCode) {
     notFound();
   }
 
+  if (!session?.user) redirect(inviteDestination(normalizedCode));
+
   const room = await getRoomForMember(normalizedCode, session.user.id);
 
-  if (!room) {
-    notFound();
-  }
+  if (!room) redirect(inviteDestination(normalizedCode));
 
   return (
     <AppAblyProvider authenticated>

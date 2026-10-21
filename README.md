@@ -17,15 +17,26 @@ QChat is a real-time, room-based chat app built with Next.js, Ably Chat, and Pos
 
 ## Tech stack
 
-| Area | Technology |
-| --- | --- |
-| Application | Next.js 16.2.9 App Router, React 19.2.4, TypeScript |
-| Styling | Tailwind CSS 4, shadcn/ui, Radix UI |
-| Real-time chat | Ably Realtime and Ably Chat SDK |
-| Authentication | Better Auth and Google OAuth |
-| Database | PostgreSQL, Prisma 7, PostgreSQL driver adapter |
-| Client data fetching | TanStack Query |
-| Notifications | Firebase browser SDK and Firebase Admin SDK |
-| File attachments | Private Cloudflare R2 storage and Upstash QStash cleanup |
+| Area                 | Technology                                               |
+| -------------------- | -------------------------------------------------------- |
+| Application          | Next.js 16.2.9 App Router, React 19.2.4, TypeScript      |
+| Styling              | Tailwind CSS 4, shadcn/ui, Radix UI                      |
+| Real-time chat       | Ably Realtime and Ably Chat SDK                          |
+| Authentication       | Better Auth and Google OAuth                             |
+| Database             | PostgreSQL, Prisma 7, PostgreSQL driver adapter          |
+| Client data fetching | TanStack Query                                           |
+| Notifications        | Firebase browser SDK and Firebase Admin SDK              |
+| File attachments     | Private Cloudflare R2 storage and Upstash QStash cleanup |
 
+## Install, invites, and message actions
 
+- QChat is installable from the homepage or chat menu. Android/desktop browsers can show a native install prompt; iPhone users get Safari Add to Home Screen instructions. Chatting still requires internet access.
+- The existing Firebase service worker handles push and caches only `/offline.html`. Private pages, API responses and attachments are not cached by the worker.
+- Share links use `/join/QC-…`. Recipients sign in, confirm joining, and enter the room. Older `/chat/QC-…` links also lead nonmembers through confirmation. Rooms remain limited to two members.
+- Senders can edit message text through Ably Chat. Attachment metadata stays intact. Emoji reactions use Ably's `Distinct` type and persisted summaries; no reaction database is required. Reaction retention follows the message's Ably retention.
+- Set `NEXT_PUBLIC_APP_URL` to the public HTTPS production origin before building. Public canonical URLs, sitemap and social images use it. Set `BETTER_AUTH_URL` to the same deployment origin and configure the Google OAuth callback and `BETTER_AUTH_SECRET` as usual.
+- Public informational pages are indexed; room, invite, user and settings routes use `noindex`. The social image is generated at `/opengraph-image`.
+
+### Release verification
+
+Run `npm test`, `npm run test:ui`, `npx tsc --noEmit`, and `npm run build`. In a deployment with real credentials, verify Google sign-in returns to the invitation, a second account joins only after confirmation, both clients see edits/reactions after reload, installation works on target devices, and background notification clicks still open the right room. Browser fixture tests mock Ably and OAuth; they do not replace this live check.

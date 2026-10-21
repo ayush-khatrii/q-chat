@@ -1,12 +1,52 @@
-// QChat SW v3 — notification click handling
-importScripts('https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js');
-importScripts('https://www.gstatic.com/firebasejs/10.8.0/firebase-messaging-compat.js');
+// QChat worker: offline navigation fallback and Firebase push share one scope.
+const OFFLINE_CACHE = "qchat-offline-v1";
+self.addEventListener("install", (event) => {
+  event.waitUntil(
+    caches.open(OFFLINE_CACHE).then((cache) => cache.add("/offline.html")),
+  );
+});
+self.addEventListener("activate", (event) => {
+  event.waitUntil(
+    caches
+      .keys()
+      .then((keys) =>
+        Promise.all(
+          keys
+            .filter(
+              (key) =>
+                key.startsWith("qchat-offline-") && key !== OFFLINE_CACHE,
+            )
+            .map((key) => caches.delete(key)),
+        ),
+      ),
+  );
+});
+self.addEventListener("fetch", (event) => {
+  if (
+    event.request.mode !== "navigate" ||
+    new URL(event.request.url).origin !== self.location.origin
+  )
+    return;
+  event.respondWith(
+    fetch(event.request).catch(
+      async () =>
+        (await caches.match("/offline.html", { cacheName: OFFLINE_CACHE })) ||
+        Response.error(),
+    ),
+  );
+});
 
 // Force new SW to activate immediately (no waiting for tab close)
-self.addEventListener('install', () => self.skipWaiting());
-self.addEventListener('activate', (event) => event.waitUntil(clients.claim()));
+self.addEventListener("install", () => self.skipWaiting());
+self.addEventListener("activate", (event) => event.waitUntil(clients.claim()));
 
 try {
+  importScripts(
+    "https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js",
+  );
+  importScripts(
+    "https://www.gstatic.com/firebasejs/10.8.0/firebase-messaging-compat.js",
+  );
   firebase.initializeApp({
     apiKey: "AIzaSyBWztykOT4DrhpojTVKLreC77p-cNlbDqs",
     authDomain: "q-chat-81181.firebaseapp.com",
@@ -22,43 +62,45 @@ try {
 
   // Only ONE handler: Firebase's onBackgroundMessage handles everything
   messaging.onBackgroundMessage((payload) => {
-    console.log('🔔 SW: Background message received:', payload);
+    console.log("🔔 SW: Background message received:", payload);
     // Read from data (we send data-only to avoid double notifications from Firebase auto-display)
     const title = payload.data?.title || payload.notification?.title;
-    const body = payload.data?.body || payload.notification?.body || '';
-    const roomCode = payload.data?.roomCode || '';
+    const body = payload.data?.body || payload.notification?.body || "";
+    const roomCode = payload.data?.roomCode || "";
     if (title) {
       self.registration.showNotification(title, {
         body: body,
-        icon: '/logo-1.png',
-        badge: '/logo-1.png',
-        tag: 'qchat-msg',
+        icon: "/logo-1.png",
+        badge: "/logo-1.png",
+        tag: "qchat-msg",
         renotify: true,
         data: { roomCode },
       });
     }
   });
 
-  console.log('✅ SW: Background message handler registered');
+  console.log("✅ SW: Background message handler registered");
 } catch (error) {
   console.error("❌ SW: Failed to initialize:", error);
 }
 
 // Handle notification click — independent of Firebase, always registered
-self.addEventListener('notificationclick', (event) => {
+self.addEventListener("notificationclick", (event) => {
   event.notification.close();
   const url = new URL(
     event.notification.data?.roomCode
       ? `/chat/${event.notification.data.roomCode}`
-      : '/',
+      : "/",
     self.location.origin,
   ).href;
 
   event.waitUntil(
     clients
-      .matchAll({ type: 'window', includeUncontrolled: true })
+      .matchAll({ type: "window", includeUncontrolled: true })
       .then((windows) => {
-        const existing = windows.find((c) => c.url.includes(self.location.origin) && 'focus' in c);
+        const existing = windows.find(
+          (c) => c.url.includes(self.location.origin) && "focus" in c,
+        );
         if (existing) {
           existing.focus();
           existing.navigate(url);

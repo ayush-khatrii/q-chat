@@ -53,6 +53,8 @@ import { useRooms } from "@/hooks/use-rooms";
 import { authClient } from "@/lib/auth-client";
 import type { UserRoom, UserRoomMember } from "@/lib/rooms";
 
+import { InstallApp } from "@/components/pwa/InstallApp";
+
 type RoomHeaderProps = {
   room: UserRoom;
   members: UserRoomMember[];
@@ -136,7 +138,7 @@ export default function RoomHeader({ room, members }: RoomHeaderProps) {
   };
 
   const shareRoom = async () => {
-    const inviteUrl = `${window.location.origin}/chat/${encodeURIComponent(currentRoom.code)}`;
+    const inviteUrl = `${window.location.origin}/join/${encodeURIComponent(currentRoom.code)}`;
     const shareData = {
       title: `Join ${currentRoom.name} on QChat`,
       text: `Join my QChat room with code ${currentRoom.code}.`,
@@ -460,6 +462,7 @@ export default function RoomHeader({ room, members }: RoomHeaderProps) {
                 ) : null}
 
                 <MenuSection icon={Settings} title="Preferences">
+                  <InstallApp />
                   <ToggleRow
                     icon={Moon}
                     label="Dark mode"

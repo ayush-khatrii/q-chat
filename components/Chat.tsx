@@ -25,9 +25,22 @@ import { Textarea } from "@/components/ui/textarea";
 
 import {
   ChatMessageEventType,
+  ChatMessageAction,
+  MessageReactionType,
+  type MessageReactionSummaryEvent,
   type ChatMessageEvent,
   type Message as AblyMessage,
 } from "@ably/chat";
+import { mergeMessagePage } from "@/lib/chat-messages";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog";
+
 import { useMessages, useTyping } from "@ably/chat/react";
 
 import { authClient } from "@/lib/auth-client";
@@ -80,6 +93,16 @@ export default function Chat({
 
   const { currentTypers, keystroke, stop } = useTyping();
 
+  const [editing, setEditing] = useState<AblyMessage | null>(null);
+  const [editText, setEditText] = useState("");
+  const [editError, setEditError] = useState<string | null>(null);
+  const [savingEdit, setSavingEdit] = useState(false);
+  const editLock = useRef(false);
+  const [reactionPending, setReactionPending] = useState<Set<string>>(
+    new Set(),
+  );
+  const reactionLocks = useRef(new Set<string>());
+  const liveSummaries = useRef(new Map<string, MessageReactionSummaryEvent>());
   const [messages, setMessages] = useState<AblyMessage[]>([]);
   const [draft, setDraft] = useState("");
   const uploads = useAttachmentUploads(roomId);
@@ -112,28 +135,36 @@ export default function Chat({
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const historyPageRef = useRef<any>(null);
 
-  const { sendMessage, historyBeforeSubscribe, deleteMessage } = useMessages({
+  const {
+    sendMessage,
+    historyBeforeSubscribe,
+    deleteMessage,
+    updateMessage,
+    sendReaction,
+    deleteReaction,
+  } = useMessages({
     listener: (event: ChatMessageEvent) => {
       if (event.type === ChatMessageEventType.Created) {
         receivedMessageSerialsRef.current.add(event.message.serial);
-        setMessages((previous) => {
-          if (
-            previous.some((message) => message.serial === event.message.serial)
-          ) {
-            return previous;
-          }
-
-          return [...previous, event.message];
-        });
       }
-
+      setMessages((previous) =>
+        mergeMessagePage(previous, [event.message], liveSummaries.current),
+      );
       if (event.type === ChatMessageEventType.Deleted) {
-        setMessages((previous) =>
-          previous.map((message) =>
-            message.serial === event.message.serial ? event.message : message,
-          ),
+        setEditing((current) =>
+          current?.serial === event.message.serial ? null : current,
         );
       }
+    },
+    reactionsListener: (event) => {
+      liveSummaries.current.set(event.messageSerial, event);
+      setMessages((previous) =>
+        previous.map((message) =>
+          message.serial === event.messageSerial
+            ? message.with(event)
+            : message,
+        ),
+      );
     },
   });
 
@@ -211,17 +242,9 @@ export default function Chat({
       .then((page) => {
         // Realtime events can arrive while history is in flight. Merge instead of
         // replacing state so a newly received message is never briefly discarded.
-        setMessages((current) => {
-          const bySerial = new Map(
-            current.map((message) => [message.serial, message]),
-          );
-
-          for (const message of page.items) {
-            bySerial.set(message.serial, message);
-          }
-
-          return Array.from(bySerial.values());
-        });
+        setMessages((current) =>
+          mergeMessagePage(current, page.items, liveSummaries.current),
+        );
         setHasMore(!page.isLast());
         historyPageRef.current = page;
         scrollAdjustmentRef.current = { type: "bottom" };
@@ -255,7 +278,9 @@ export default function Chat({
 
       if (!nextPage) return;
 
-      setMessages((previous) => [...nextPage.items, ...previous]);
+      setMessages((previous) =>
+        mergeMessagePage(previous, nextPage.items, liveSummaries.current),
+      );
       setHasMore(!nextPage.isLast());
       historyPageRef.current = nextPage;
 
@@ -399,9 +424,90 @@ export default function Chat({
     [deleteMessage, roomId],
   );
 
-  const handleEditMessage = useCallback(() => {
-    toast.info("Edit feature coming soon!");
-  }, []);
+  const handleEditMessage = (message: AblyMessage) => {
+    if (
+      message.clientId !== currentUser?.id ||
+      !message.text ||
+      message.action === ChatMessageAction.MessageDelete
+    )
+      return;
+    setEditing(message);
+    setEditText(message.text);
+    setEditError(null);
+  };
+  const saveEdit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!editing || !editText.trim() || editLock.current) return;
+    const latest = messages.find(
+      (message) => message.serial === editing.serial,
+    );
+    if (
+      !latest ||
+      latest.clientId !== currentUser?.id ||
+      latest.action === ChatMessageAction.MessageDelete
+    ) {
+      setEditing(null);
+      return;
+    }
+    editLock.current = true;
+    setSavingEdit(true);
+    setEditError(null);
+    try {
+      const updated = await updateMessage(
+        latest.serial,
+        {
+          text: editText.trim(),
+          metadata: latest.metadata,
+          headers: latest.headers,
+        },
+        { description: "Edited by sender" },
+      );
+      setMessages((previous) =>
+        mergeMessagePage(previous, [updated], liveSummaries.current),
+      );
+      setEditing(null);
+    } catch (error) {
+      setEditError(
+        error instanceof Error
+          ? error.message
+          : "Unable to save. Please try again.",
+      );
+    } finally {
+      editLock.current = false;
+      setSavingEdit(false);
+    }
+  };
+  const toggleReaction = async (message: AblyMessage, emoji: string) => {
+    const key = `${message.serial}:${emoji}`;
+    if (
+      !currentUser?.id ||
+      message.action === ChatMessageAction.MessageDelete ||
+      reactionLocks.current.has(key)
+    )
+      return;
+    reactionLocks.current.add(key);
+    setReactionPending(new Set(reactionLocks.current));
+    try {
+      const selected = message.reactions.distinct[emoji]?.clientIds.includes(
+        currentUser.id,
+      );
+      if (selected)
+        await deleteReaction(message.serial, {
+          name: emoji,
+          type: MessageReactionType.Distinct,
+        });
+      else
+        await sendReaction(message.serial, {
+          name: emoji,
+          type: MessageReactionType.Distinct,
+        });
+    } catch {
+      toast.error("Unable to change reaction. Please try again.");
+    } finally {
+      reactionLocks.current.delete(key);
+      setReactionPending(new Set(reactionLocks.current));
+    }
+  };
 
   const handleChange = (event: React.ChangeEvent<HTMLTextAreaElement>) => {
     const value = event.target.value;
@@ -522,6 +628,55 @@ export default function Chat({
       className="flex h-full min-h-0 w-full min-w-0 flex-1 flex-col overflow-hidden"
       style={getRoomThemeStyle(theme)}
     >
+      <Dialog
+        open={editing !== null}
+        onOpenChange={(open) => {
+          if (!open && !savingEdit) setEditing(null);
+        }}
+      >
+        <DialogContent>
+          <form onSubmit={saveEdit} className="space-y-4">
+            <DialogHeader>
+              <DialogTitle>Edit message</DialogTitle>
+              <DialogDescription>
+                Update your message. Attachments stay unchanged.
+              </DialogDescription>
+            </DialogHeader>
+            <Textarea
+              aria-label="Edit message text"
+              value={editText}
+              onChange={(event) => setEditText(event.target.value)}
+              disabled={savingEdit}
+              autoFocus
+            />
+            {editError && (
+              <p role="alert" className="text-sm text-destructive">
+                {editError}
+              </p>
+            )}
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="outline"
+                disabled={savingEdit}
+                onClick={() => setEditing(null)}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                disabled={
+                  savingEdit ||
+                  !editText.trim() ||
+                  editText.trim() === editing?.text
+                }
+              >
+                {savingEdit ? "Saving…" : "Save changes"}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
       <ScrollArea
         ref={scrollAreaRef}
         className="
@@ -622,6 +777,9 @@ export default function Chat({
                 onCopy={(item) => void handleCopyMessage(item)}
                 onDelete={(item) => void handleDeleteMessage(item)}
                 onEdit={handleEditMessage}
+                currentUserId={currentUser?.id}
+                onReact={(item, emoji) => void toggleReaction(item, emoji)}
+                reactionPending={reactionPending}
               />
             );
           })}

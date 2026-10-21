@@ -1,17 +1,14 @@
+import { publicPageMetadata } from "@/lib/site";
 import type { Metadata } from "next";
 
 import { InfoPageShell } from "@/components/info/InfoPageShell";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
-export const metadata: Metadata = {
-  title: "Terms of Service",
-  description: "Simple terms for using QChat.",
-};
+export const metadata: Metadata = publicPageMetadata(
+  "Terms of Service",
+  "Simple terms for using QChat.",
+  "/terms",
+);
 
 const terms = [
   {

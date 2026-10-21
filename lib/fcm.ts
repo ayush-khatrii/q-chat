@@ -1,3 +1,4 @@
+import { registerAppWorker } from "@/lib/pwa";
 import { initializeApp, getApps } from "firebase/app";
 import { getMessaging, getToken, onMessage } from "firebase/messaging";
 
@@ -14,7 +15,11 @@ const firebaseConfig = {
 let foregroundListenerSet = false;
 
 export async function initFcm(userId: string): Promise<boolean> {
-  if (typeof window === "undefined" || !("serviceWorker" in navigator) || !userId) {
+  if (
+    typeof window === "undefined" ||
+    !("serviceWorker" in navigator) ||
+    !userId
+  ) {
     console.log("❌ FCM: browser not supported or no userId");
     return false;
   }
@@ -26,18 +31,18 @@ export async function initFcm(userId: string): Promise<boolean> {
     const messaging = getMessaging(app);
 
     console.log("📋 FCM: Registering service worker...");
-    let registration = await navigator.serviceWorker.getRegistration("/firebase-messaging-sw.js");
-    if (!registration) {
-      console.log("📋 FCM: No existing SW registration, registering...");
-      registration = await navigator.serviceWorker.register("/firebase-messaging-sw.js");
-    }
+    const registration = await registerAppWorker();
+    if (!registration) return false;
 
     // Now wait for it to be ready (with timeout)
     console.log("📋 FCM: Waiting for service worker readiness...");
     const swReady = await Promise.race([
       navigator.serviceWorker.ready,
       new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error("SW ready timed out after 10s")), 10000),
+        setTimeout(
+          () => reject(new Error("SW ready timed out after 10s")),
+          10000,
+        ),
       ),
     ]);
     console.log("✅ FCM: Service worker ready, scope:", swReady.scope);
@@ -53,14 +58,24 @@ export async function initFcm(userId: string): Promise<boolean> {
 
     console.log("📋 FCM: Getting FCM token with VAPID key...");
     const vapidKey = process.env.NEXT_PUBLIC_VAPID_KEY;
-    console.log("📋 FCM: VAPID key present?", !!vapidKey, "length:", vapidKey?.length);
+    console.log(
+      "📋 FCM: VAPID key present?",
+      !!vapidKey,
+      "length:",
+      vapidKey?.length,
+    );
 
     const token = await getToken(messaging, {
       vapidKey: vapidKey!,
       serviceWorkerRegistration: registration,
     });
 
-    console.log("📋 FCM: Token received?", !!token, "preview:", token?.slice(0, 20) + "...");
+    console.log(
+      "📋 FCM: Token received?",
+      !!token,
+      "preview:",
+      token?.slice(0, 20) + "...",
+    );
 
     if (token) {
       console.log("📋 FCM: Saving token to server...");
@@ -80,7 +95,10 @@ export async function initFcm(userId: string): Promise<boolean> {
     if (!foregroundListenerSet) {
       foregroundListenerSet = true;
       onMessage(messaging, (payload) => {
-        console.log("🔔 Foreground push received (no popup — app is open):", payload);
+        console.log(
+          "🔔 Foreground push received (no popup — app is open):",
+          payload,
+        );
         // No new Notification() here — service worker handles background,
         // and when app is open the user already sees the chat.
       });

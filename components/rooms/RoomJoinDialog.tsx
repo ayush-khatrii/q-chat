@@ -11,7 +11,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { joinRoomSchema } from "@/lib/rooms";
+import { parseInviteCode } from "@/lib/invites";
 
 type RoomJoinDialogProps = {
   open: boolean;
@@ -32,17 +32,17 @@ export default function RoomJoinDialog({
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
-    const parsedCode = joinRoomSchema.safeParse({ code });
+    const parsedCode = parseInviteCode(code, window.location.origin);
 
-    if (!parsedCode.success) {
-      setError(parsedCode.error.issues[0]?.message ?? "Invalid room code.");
+    if (!parsedCode) {
+      setError("Enter a valid room code or a QChat invite link.");
       return;
     }
 
     setError(null);
 
     try {
-      await onJoin(parsedCode.data.code);
+      await onJoin(parsedCode);
       setCode("");
       onOpenChange(false);
     } catch (joinError) {
@@ -61,7 +61,7 @@ export default function RoomJoinDialog({
           <DialogHeader>
             <DialogTitle>Join room</DialogTitle>
             <DialogDescription>
-              Enter the QC room code shared by the room owner.
+              Enter the QC room code or paste a QChat invite link.
             </DialogDescription>
           </DialogHeader>
 
@@ -69,16 +69,14 @@ export default function RoomJoinDialog({
             <Input
               value={code}
               onChange={(event) => {
-                setCode(event.target.value.toUpperCase());
+                setCode(event.target.value);
                 setError(null);
               }}
-              placeholder="QC-TEAM-01"
+              placeholder="QC-TEAM-01 or invite link"
               disabled={isJoining}
               autoFocus
             />
-            {error ? (
-              <p className="text-xs text-destructive">{error}</p>
-            ) : null}
+            {error ? <p className="text-xs text-destructive">{error}</p> : null}
           </div>
 
           <DialogFooter>

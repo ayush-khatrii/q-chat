@@ -1,5 +1,7 @@
 "use client";
 
+import { InstallApp } from "@/components/pwa/InstallApp";
+
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -166,6 +168,8 @@ export default function HomePage() {
             </>
           )}
         </div>
+
+        <div className="mt-4"><InstallApp /></div>
 
         {signInError ? (
           <p className="mt-3 text-sm text-destructive">{signInError}</p>

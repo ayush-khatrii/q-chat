@@ -1,3 +1,4 @@
+import { publicPageMetadata } from "@/lib/site";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Code2, ExternalLink, Globe, MessagesSquare } from "lucide-react";
@@ -13,10 +14,11 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 
-export const metadata: Metadata = {
-  title: "About QChat",
-  description: "About QChat and its creator, Ayush Khatri.",
-};
+export const metadata: Metadata = publicPageMetadata(
+  "About QChat",
+  "About QChat and its creator, Ayush Khatri.",
+  "/about",
+);
 
 const stack = [
   "Next.js",

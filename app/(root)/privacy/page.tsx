@@ -1,3 +1,4 @@
+import { publicPageMetadata } from "@/lib/site";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Database, History, LockKeyhole, Radio } from "lucide-react";
@@ -11,10 +12,11 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 
-export const metadata: Metadata = {
-  title: "Privacy Policy",
-  description: "A short explanation of how QChat handles data.",
-};
+export const metadata: Metadata = publicPageMetadata(
+  "Privacy Policy",
+  "A short explanation of how QChat handles data.",
+  "/privacy",
+);
 
 export default function PrivacyPage() {
   return (
@@ -54,9 +56,9 @@ export default function PrivacyPage() {
           <CardTitle>Information QChat stores</CardTitle>
         </CardHeader>
         <CardContent className="text-muted-foreground">
-          QChat stores account details supplied through sign-in, room membership,
-          room themes, message read receipts, and notification tokens. This data
-          is used only to operate account and chat features.
+          QChat stores account details supplied through sign-in, room
+          membership, room themes, message read receipts, and notification
+          tokens. This data is used only to operate account and chat features.
         </CardContent>
       </Card>
 

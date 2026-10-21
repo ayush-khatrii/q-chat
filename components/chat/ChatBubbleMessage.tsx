@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { MessageAttachments } from "@/components/chat/MessageAttachments";
 import Link from "next/link";
 import {
@@ -9,6 +9,7 @@ import {
   CheckCheckIcon,
   Copy,
   Pencil,
+  SmilePlus,
   Trash2,
 } from "lucide-react";
 import { useInView } from "react-intersection-observer";
@@ -36,6 +37,10 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 
+import { Button } from "@/components/ui/button";
+
+const REACTIONS = ["👍", "❤️", "😂", "😮", "😢", "🙏"];
+
 type ChatBubbleMessageProps = {
   roomId: string;
   message: AblyMessage;
@@ -47,7 +52,10 @@ type ChatBubbleMessageProps = {
   onRead: (messageSerial: string) => Promise<boolean>;
   onCopy: (message: AblyMessage) => void;
   onDelete: (message: AblyMessage) => void;
-  onEdit: () => void;
+  onEdit: (message: AblyMessage) => void;
+  currentUserId?: string;
+  onReact: (message: AblyMessage, emoji: string) => void;
+  reactionPending: Set<string>;
 };
 
 function getInitials(name: string) {
@@ -91,7 +99,11 @@ export function ChatBubbleMessage({
   onCopy,
   onDelete,
   onEdit,
+  currentUserId,
+  onReact,
+  reactionPending,
 }: ChatBubbleMessageProps) {
+  const [pickerOpen, setPickerOpen] = useState(false);
   const { ref, inView } = useInView({
     threshold: 0.1,
   });
@@ -186,7 +198,7 @@ export function ChatBubbleMessage({
           variant={isDeleted ? "muted" : isMe ? "default" : "secondary"}
           align={isMe ? "end" : "start"}
         >
-          {!isDeleted && isMe ? (
+          {!isDeleted ? (
             <ContextMenu>
               <ContextMenuTrigger asChild>{content}</ContextMenuTrigger>
               <ContextMenuContent className="w-40">
@@ -194,18 +206,27 @@ export function ChatBubbleMessage({
                   <Copy />
                   Copy
                 </ContextMenuItem>
-                <ContextMenuItem onClick={onEdit}>
-                  <Pencil />
-                  Edit
+                <ContextMenuItem onClick={() => setPickerOpen(true)}>
+                  <SmilePlus /> React
                 </ContextMenuItem>
-                <ContextMenuSeparator />
-                <ContextMenuItem
-                  variant="destructive"
-                  onClick={() => onDelete(message)}
-                >
-                  <Trash2 />
-                  Delete
-                </ContextMenuItem>
+                {isMe && message.text && (
+                  <ContextMenuItem onClick={() => onEdit(message)}>
+                    <Pencil />
+                    Edit
+                  </ContextMenuItem>
+                )}
+                {isMe && (
+                  <>
+                    <ContextMenuSeparator />
+                    <ContextMenuItem
+                      variant="destructive"
+                      onClick={() => onDelete(message)}
+                    >
+                      <Trash2 />
+                      Delete
+                    </ContextMenuItem>
+                  </>
+                )}
               </ContextMenuContent>
             </ContextMenu>
           ) : (
@@ -213,10 +234,96 @@ export function ChatBubbleMessage({
           )}
         </Bubble>
 
+        {!isDeleted && (
+          <div
+            className="flex max-w-full flex-wrap items-center gap-1"
+            aria-label="Message reactions"
+          >
+            {Object.entries(message.reactions?.distinct ?? {})
+              .filter(([, summary]) => summary.total > 0)
+              .map(([emoji, summary]) => {
+                const selected = Boolean(
+                  currentUserId && summary.clientIds.includes(currentUserId),
+                );
+                return (
+                  <Button
+                    key={emoji}
+                    type="button"
+                    variant={selected ? "secondary" : "outline"}
+                    size="sm"
+                    aria-label={`${emoji}: ${summary.total} reaction${summary.total === 1 ? "" : "s"}${selected ? ", including you" : ""}`}
+                    aria-pressed={selected}
+                    disabled={
+                      !currentUserId ||
+                      reactionPending.has(`${message.serial}:${emoji}`)
+                    }
+                    className={selected ? "border-primary/50" : ""}
+                    onClick={() => onReact(message, emoji)}
+                  >
+                    {emoji} {summary.total}
+                  </Button>
+                );
+              })}
+            <Button
+              type="button"
+              size="icon-sm"
+              variant="ghost"
+              aria-label="React to message"
+              aria-expanded={pickerOpen}
+              disabled={!currentUserId}
+              onClick={() => setPickerOpen((open) => !open)}
+            >
+              <SmilePlus className="size-3.5" />
+            </Button>
+            {pickerOpen && (
+              <div
+                role="group"
+                aria-label="Choose a reaction"
+                className="flex flex-wrap gap-1 rounded-md border bg-popover p-1"
+                onKeyDown={(event) => {
+                  if (event.key === "Escape") setPickerOpen(false);
+                }}
+              >
+                {REACTIONS.map((emoji) => (
+                  <Button
+                    key={emoji}
+                    type="button"
+                    variant="ghost"
+                    size="icon-sm"
+                    aria-label={`React ${emoji}`}
+                    aria-pressed={Boolean(
+                      currentUserId &&
+                      message.reactions?.distinct[emoji]?.clientIds.includes(
+                        currentUserId,
+                      ),
+                    )}
+                    disabled={
+                      !currentUserId ||
+                      reactionPending.has(`${message.serial}:${emoji}`)
+                    }
+                    onClick={() => {
+                      onReact(message, emoji);
+                      setPickerOpen(false);
+                    }}
+                  >
+                    {emoji}
+                  </Button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
         <MessageFooter className="gap-1">
           <time dateTime={message.timestamp.toISOString()}>
             {formatMessageTime(message.timestamp)}
           </time>
+          {!isDeleted &&
+            message.version &&
+            message.version.serial !== message.serial && (
+              <span title={message.version.timestamp.toLocaleString()}>
+                · edited
+              </span>
+            )}
           {isMe && !isDeleted && (
             <Tooltip>
               <TooltipTrigger asChild>

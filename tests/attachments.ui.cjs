@@ -16,7 +16,7 @@ async function fixture() {
     "@/components/chat/chat-appearance":
       "export const getRoomThemeStyle = () => ({}); export const useRoomTheme = () => ({theme:{}});",
     "@ably/chat":
-      'export const ChatMessageEventType={Created:"created",Deleted:"deleted"}; export const ChatMessageAction={MessageDelete:"deleted"};',
+      'export const ChatMessageEventType={Created:"created",Deleted:"deleted"}; export const ChatMessageAction={MessageDelete:"deleted"}; export const MessageReactionType={Distinct:"distinct"};',
     "@ably/chat/react": `import {useEffect} from 'react';
       export const useTyping=()=>({currentTypers:new Set(),keystroke:async()=>{},stop:async()=>{}});
       export function useMessages({listener}) {

@@ -9,6 +9,7 @@ import {
   CheckCheckIcon,
   Copy,
   Pencil,
+  Reply,
   Trash2,
 } from "lucide-react";
 import { useInView } from "react-intersection-observer";
@@ -37,6 +38,7 @@ import {
 } from "@/components/ui/tooltip";
 
 import { Button } from "@/components/ui/button";
+import { getMessageReply } from "@/lib/message-replies";
 
 const REACTIONS = ["👍", "❤️", "😂", "😮", "😢", "🙏"];
 
@@ -52,6 +54,10 @@ type ChatBubbleMessageProps = {
   onCopy: (message: AblyMessage) => void;
   onDelete: (message: AblyMessage) => void;
   onEdit: (message: AblyMessage) => void;
+  onReply: (message: AblyMessage) => void;
+  onReplyJump: (serial: string) => void;
+  replySenderName: (clientId: string) => string;
+  highlighted: boolean;
   currentUserId?: string;
   onReact: (message: AblyMessage, emoji: string) => void;
   reactionPending: Set<string>;
@@ -98,6 +104,10 @@ export function ChatBubbleMessage({
   onCopy,
   onDelete,
   onEdit,
+  onReply,
+  onReplyJump,
+  replySenderName,
+  highlighted,
   currentUserId,
   onReact,
   reactionPending,
@@ -110,6 +120,7 @@ export function ChatBubbleMessage({
     ([, summary]) => summary.total > 0,
   );
   const hasReactions = !isDeleted && reactions.length > 0;
+  const reply = getMessageReply(message.metadata);
 
   useEffect(() => {
     if (isMe || isDeleted || !inView || !isPageVisible) return;
@@ -185,6 +196,24 @@ export function ChatBubbleMessage({
         </>
       ) : (
         <>
+          {reply && (
+            <button
+              type="button"
+              className="mb-1.5 block w-full max-w-full rounded-lg border-l-2 border-current bg-black/15 px-2.5 py-1.5 text-left opacity-90 hover:bg-black/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-current"
+              aria-label={`Go to message from ${replySenderName(reply.clientId)}`}
+              onClick={(event) => {
+                event.stopPropagation();
+                onReplyJump(reply.serial);
+              }}
+            >
+              <span className="block truncate text-xs font-semibold">
+                {replySenderName(reply.clientId)}
+              </span>
+              <span className="block truncate text-xs opacity-75">
+                {reply.previewText || "Attachment"}
+              </span>
+            </button>
+          )}
           {message.text && <span>{message.text}</span>}
           <MessageAttachments
             roomId={roomId}
@@ -197,7 +226,16 @@ export function ChatBubbleMessage({
   );
 
   return (
-    <Message ref={ref} align={isMe ? "end" : "start"}>
+    <Message
+      ref={ref}
+      align={isMe ? "end" : "start"}
+      data-message-serial={message.serial}
+      className={
+        highlighted
+          ? "rounded-xl ring-2 ring-primary ring-offset-4 ring-offset-background transition-shadow"
+          : "transition-shadow"
+      }
+    >
       <MessageContent>
         <MessageHeader className="gap-2">
           <Avatar size="sm">
@@ -258,6 +296,9 @@ export function ChatBubbleMessage({
                   })}
                 </div>
                 <ContextMenuSeparator />
+                <ContextMenuItem onSelect={() => onReply(message)}>
+                  <Reply /> Reply
+                </ContextMenuItem>
                 {message.text && (
                   <ContextMenuItem onSelect={() => onCopy(message)}>
                     <Copy /> Copy

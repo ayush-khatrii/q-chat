@@ -8,7 +8,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { Paperclip, Send } from "lucide-react";
+import { Paperclip, Send, X } from "lucide-react";
 import { toast } from "sonner";
 
 import { AttachmentQueue } from "@/components/chat/AttachmentQueue";
@@ -52,6 +52,7 @@ import {
 } from "@/components/chat/chat-appearance";
 import { ChatBubbleMessage } from "@/components/chat/ChatBubbleMessage";
 import type { RoomTheme, UserRoomMember } from "@/lib/rooms";
+import { messagePreview, prepareReply } from "@/lib/message-replies";
 
 type ChatProps = {
   roomId: string;
@@ -94,6 +95,11 @@ export default function Chat({
   const { currentTypers, keystroke, stop } = useTyping();
 
   const [editing, setEditing] = useState<AblyMessage | null>(null);
+  const [replyingTo, setReplyingTo] = useState<AblyMessage | null>(null);
+  const [highlightedSerial, setHighlightedSerial] = useState<string | null>(
+    null,
+  );
+  const highlightTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [editText, setEditText] = useState("");
   const [editError, setEditError] = useState<string | null>(null);
   const [savingEdit, setSavingEdit] = useState(false);
@@ -140,6 +146,7 @@ export default function Chat({
     historyBeforeSubscribe,
     deleteMessage,
     updateMessage,
+    getMessage,
     sendReaction,
     deleteReaction,
   } = useMessages({
@@ -152,6 +159,9 @@ export default function Chat({
       );
       if (event.type === ChatMessageEventType.Deleted) {
         setEditing((current) =>
+          current?.serial === event.message.serial ? null : current,
+        );
+        setReplyingTo((current) =>
           current?.serial === event.message.serial ? null : current,
         );
       }
@@ -167,6 +177,13 @@ export default function Chat({
       );
     },
   });
+
+  useEffect(
+    () => () => {
+      if (highlightTimer.current) clearTimeout(highlightTimer.current);
+    },
+    [],
+  );
 
   useEffect(() => {
     if (!currentUser?.id) return;
@@ -391,6 +408,62 @@ export default function Chat({
           ? `${typingUsers[0]} and ${typingUsers.length - 1} others are typing…`
           : null;
 
+  const senderNameFor = useCallback(
+    (clientId: string) => {
+      if (clientId === currentUser?.id)
+        return currentUser.name ?? currentUser.email ?? "You";
+      const user = members.find((member) => member.userId === clientId)?.user;
+      return user?.name ?? user?.email ?? "Unknown user";
+    },
+    [currentUser, members],
+  );
+
+  const handleReplyMessage = useCallback((message: AblyMessage) => {
+    if (message.action === ChatMessageAction.MessageDelete) return;
+    setReplyingTo(message);
+    requestAnimationFrame(() => textareaRef.current?.focus());
+  }, []);
+
+  const jumpToMessage = useCallback(
+    async (serial: string) => {
+      let target = Array.from(
+        scrollAreaRef.current?.querySelectorAll<HTMLElement>(
+          "[data-message-serial]",
+        ) ?? [],
+      ).find((element) => element.dataset.messageSerial === serial);
+
+      if (!target) {
+        try {
+          const parent = await getMessage(serial);
+          setMessages((current) =>
+            mergeMessagePage(current, [parent], liveSummaries.current),
+          );
+          await new Promise<void>((resolve) =>
+            requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+          );
+          target = Array.from(
+            scrollAreaRef.current?.querySelectorAll<HTMLElement>(
+              "[data-message-serial]",
+            ) ?? [],
+          ).find((element) => element.dataset.messageSerial === serial);
+        } catch {
+          toast.error("The original message is no longer available.");
+          return;
+        }
+      }
+
+      if (!target) return;
+      target.scrollIntoView({ behavior: "smooth", block: "center" });
+      setHighlightedSerial(serial);
+      if (highlightTimer.current) clearTimeout(highlightTimer.current);
+      highlightTimer.current = setTimeout(
+        () => setHighlightedSerial(null),
+        1_600,
+      );
+    },
+    [getMessage],
+  );
+
   const handleCopyMessage = useCallback(async (message: AblyMessage) => {
     try {
       await navigator.clipboard.writeText(message.text);
@@ -522,6 +595,11 @@ export default function Chat({
   };
 
   const handleKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (event.key === "Escape" && replyingTo) {
+      event.preventDefault();
+      setReplyingTo(null);
+      return;
+    }
     if (
       event.key === "Enter" &&
       !event.shiftKey &&
@@ -554,6 +632,7 @@ export default function Chat({
     sendingRef.current = true;
     setSending(true);
     setSendError(null);
+    const replyTarget = replyingTo;
     try {
       const ids = uploads.files.flatMap((file) => (file.id ? [file.id] : []));
       // Retain the sent message until binding succeeds. Retrying must not send it twice.
@@ -565,6 +644,7 @@ export default function Chat({
             displayName: currentUser?.name ?? currentUser?.email ?? "User",
             image: currentUser?.image ?? "",
             ...(ids.length ? { attachmentIds: ids } : {}),
+            ...(replyTarget ? { reply: prepareReply(replyTarget) } : {}),
           },
         }));
       pendingMessage.current = message;
@@ -593,6 +673,7 @@ export default function Chat({
       pendingMessage.current = null;
       uploads.clear();
       setDraft("");
+      setReplyingTo(null);
     } catch (error) {
       setSendError(
         error instanceof Error ? error.message : "Unable to send message.",
@@ -613,9 +694,8 @@ export default function Chat({
         },
         body: JSON.stringify({
           roomCode,
-          senderId: currentUser.id,
-          title: currentUser.name ?? currentUser.email ?? "Someone",
           body: text || "Shared an attachment",
+          kind: replyTarget ? "reply" : "message",
         }),
       }).catch(console.error);
 
@@ -777,6 +857,10 @@ export default function Chat({
                 onCopy={(item) => void handleCopyMessage(item)}
                 onDelete={(item) => void handleDeleteMessage(item)}
                 onEdit={handleEditMessage}
+                onReply={handleReplyMessage}
+                onReplyJump={(serial) => void jumpToMessage(serial)}
+                replySenderName={senderNameFor}
+                highlighted={highlightedSerial === message.serial}
                 currentUserId={currentUser?.id}
                 onReact={(item, emoji) => void toggleReaction(item, emoji)}
                 reactionPending={reactionPending}
@@ -801,6 +885,32 @@ export default function Chat({
           onSubmit={handleSubmit}
           className="border-t border-white/10 bg-black/15 px-3 py-3 backdrop-blur-md sm:px-4"
         >
+          {replyingTo && (
+            <div className="mx-auto mb-2 flex w-full max-w-5xl items-center gap-3 rounded-xl border border-border/70 bg-muted/60 px-3 py-2">
+              <div className="min-w-0 flex-1 border-l-2 border-primary pl-3">
+                <p className="truncate text-xs font-medium text-primary">
+                  Replying to {senderNameFor(replyingTo.clientId)}
+                </p>
+                <p className="truncate text-xs text-muted-foreground">
+                  {messagePreview(replyingTo)}
+                </p>
+              </div>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="size-8 shrink-0"
+                aria-label="Cancel reply"
+                disabled={sending || Boolean(pendingMessage.current)}
+                onClick={() => {
+                  setReplyingTo(null);
+                  textareaRef.current?.focus();
+                }}
+              >
+                <X className="size-4" />
+              </Button>
+            </div>
+          )}
           <AttachmentQueue
             files={uploads.files}
             remove={uploads.remove}

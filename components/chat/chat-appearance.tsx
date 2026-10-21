@@ -1,5 +1,6 @@
 "use client";
 
+import { useMemo } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   DEFAULT_ROOM_THEME,
@@ -10,6 +11,7 @@ import {
 export const ROOM_THEME_PRESETS: Record<string, RoomTheme> = {
   midnight: DEFAULT_ROOM_THEME,
   hearts: {
+    ...DEFAULT_ROOM_THEME,
     surface: "#09070a",
     outgoingBubble: "#9d174d",
     outgoingText: "#fff1f2",
@@ -20,6 +22,7 @@ export const ROOM_THEME_PRESETS: Record<string, RoomTheme> = {
     patternOpacity: "soft",
   },
   paper: {
+    ...DEFAULT_ROOM_THEME,
     surface: "#efeae2",
     outgoingBubble: "#d9fdd3",
     outgoingText: "#111b21",
@@ -30,6 +33,7 @@ export const ROOM_THEME_PRESETS: Record<string, RoomTheme> = {
     patternOpacity: "subtle",
   },
   ocean: {
+    ...DEFAULT_ROOM_THEME,
     surface: "#071b24",
     outgoingBubble: "#075e54",
     outgoingText: "#ecfeff",
@@ -51,9 +55,7 @@ async function requestRoomTheme(roomId: string, theme?: RoomTheme) {
     body: theme ? JSON.stringify(theme) : undefined,
   });
   const payload = (await response.json().catch(() => null)) as
-    | ThemeResponse
-    | { error?: string }
-    | null;
+    ThemeResponse | { error?: string } | null;
 
   if (!response.ok || !payload || !("theme" in payload)) {
     throw new Error(
@@ -73,7 +75,7 @@ export function useRoomTheme(roomId: string, initialTheme?: RoomTheme) {
     queryKey,
     queryFn: () => requestRoomTheme(roomId),
     initialData: initialTheme
-      ? { theme: initialTheme, updatedAt: "" }
+      ? { theme: normalizeRoomTheme(initialTheme), updatedAt: "" }
       : undefined,
     staleTime: 5 * 60 * 1000,
   });
@@ -82,8 +84,13 @@ export function useRoomTheme(roomId: string, initialTheme?: RoomTheme) {
     onSuccess: (data) => queryClient.setQueryData(queryKey, data),
   });
 
+  const theme = useMemo(
+    () => normalizeRoomTheme(query.data?.theme ?? initialTheme),
+    [query.data?.theme, initialTheme],
+  );
+
   return {
-    theme: query.data?.theme ?? initialTheme ?? DEFAULT_ROOM_THEME,
+    theme,
     isLoading: query.isLoading,
     error: query.error,
     saveTheme: mutation.mutateAsync,
@@ -134,7 +141,12 @@ export function getRoomThemeStyle(theme: RoomTheme): React.CSSProperties {
     backgroundSize,
     "--chat-outgoing": theme.outgoingBubble,
     "--chat-outgoing-foreground": theme.outgoingText,
-    "--chat-incoming": theme.incomingBubble,
+    "--chat-outgoing-border": theme.outgoingBorder,
+    "--chat-incoming":
+      theme.incomingBubble === "primary"
+        ? "var(--primary)"
+        : theme.incomingBubble,
     "--chat-incoming-foreground": theme.incomingText,
+    "--chat-incoming-border": theme.incomingBorder,
   } as React.CSSProperties;
 }

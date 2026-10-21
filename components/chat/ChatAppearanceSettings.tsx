@@ -23,11 +23,7 @@ import {
 } from "@/components/chat/chat-appearance";
 import { authClient } from "@/lib/auth-client";
 import { useRooms } from "@/hooks/use-rooms";
-import {
-  DEFAULT_ROOM_THEME,
-  type RoomTheme,
-  type UserRoom,
-} from "@/lib/rooms";
+import { DEFAULT_ROOM_THEME, type RoomTheme, type UserRoom } from "@/lib/rooms";
 
 const COLOR_CONTROLS: {
   key: keyof Pick<
@@ -35,8 +31,10 @@ const COLOR_CONTROLS: {
     | "surface"
     | "outgoingBubble"
     | "outgoingText"
+    | "outgoingBorder"
     | "incomingBubble"
     | "incomingText"
+    | "incomingBorder"
     | "patternColor"
   >;
   label: string;
@@ -45,8 +43,10 @@ const COLOR_CONTROLS: {
   { key: "patternColor", label: "Pattern color" },
   { key: "outgoingBubble", label: "Your bubbles" },
   { key: "outgoingText", label: "Your text" },
+  { key: "outgoingBorder", label: "Your bubble border" },
   { key: "incomingBubble", label: "Received bubbles" },
   { key: "incomingText", label: "Received text" },
+  { key: "incomingBorder", label: "Received bubble border" },
 ];
 
 const PRESETS = [
@@ -147,9 +147,9 @@ function RoomThemeEditor({
   };
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col bg-background">
+    <div className="flex min-h-0 w-full min-w-0 flex-1 flex-col overflow-y-auto bg-background lg:overflow-hidden">
       <header className="shrink-0 border-b bg-background/90 backdrop-blur-xl">
-        <div className="mx-auto flex h-16 w-full max-w-7xl items-center gap-3 px-4 lg:px-8">
+        <div className="mx-auto grid w-full min-w-0 max-w-7xl grid-cols-[auto_minmax(0,1fr)] items-center gap-x-2 gap-y-3 px-3 py-3 sm:flex sm:gap-3 sm:px-4 lg:px-6">
           <Button variant="ghost" size="icon-lg" onClick={onBack}>
             <ArrowLeft />
             <span className="sr-only">Go back</span>
@@ -160,9 +160,10 @@ function RoomThemeEditor({
               Shared with everyone in {room.name}
             </p>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="col-span-2 grid grid-cols-2 items-center gap-2 sm:ml-auto sm:flex">
             <Button
               variant="outline"
+              className="min-h-10"
               onClick={() => setDraft(DEFAULT_ROOM_THEME)}
               disabled={isSaving}
             >
@@ -170,7 +171,11 @@ function RoomThemeEditor({
               <span className="hidden sm:inline">Reset to default</span>
               <span className="sm:hidden">Reset</span>
             </Button>
-            <Button onClick={() => void handleSave()} disabled={isSaving}>
+            <Button
+              className="min-h-10"
+              onClick={() => void handleSave()}
+              disabled={isSaving}
+            >
               {isSaving ? <Loader2 className="animate-spin" /> : <Save />}
               {isSaving ? "Saving..." : "Save theme"}
             </Button>
@@ -178,12 +183,12 @@ function RoomThemeEditor({
         </div>
       </header>
 
-      <div className="grid min-h-0 flex-1 lg:grid-cols-[260px_minmax(0,1fr)]">
-        <aside className="border-b bg-muted/20 p-3 lg:overflow-y-auto lg:border-b-0 lg:border-r">
+      <div className="grid min-w-0 shrink-0 grid-cols-[minmax(0,1fr)] lg:min-h-0 lg:flex-1 lg:shrink lg:grid-cols-[220px_minmax(0,1fr)] xl:grid-cols-[260px_minmax(0,1fr)]">
+        <aside className="min-w-0 border-b bg-muted/20 p-3 lg:overflow-y-auto lg:border-b-0 lg:border-r">
           <p className="mb-2 px-2 text-[0.625rem] font-semibold uppercase tracking-wider text-muted-foreground">
             Your chats
           </p>
-          <div className="flex gap-2 overflow-x-auto lg:flex-col lg:overflow-visible">
+          <div className="flex w-full min-w-0 gap-2 overflow-x-auto overscroll-x-contain p-1 lg:flex-col lg:overflow-visible">
             {rooms.map((listedRoom) => {
               const owner = listedRoom.members.find(
                 (member) => member.userId === listedRoom.ownerId,
@@ -196,7 +201,7 @@ function RoomThemeEditor({
                   type="button"
                   onClick={() => selectRoom(listedRoom.code)}
                   className={[
-                    "flex min-w-56 items-center gap-3 rounded-xl px-3 py-2.5 text-left transition lg:min-w-0",
+                    "flex w-56 min-w-0 shrink-0 items-center gap-3 rounded-xl px-3 py-2.5 text-left transition lg:w-full",
                     selected
                       ? "bg-primary/10 text-foreground ring-1 ring-primary/20"
                       : "hover:bg-accent",
@@ -216,16 +221,18 @@ function RoomThemeEditor({
                       {listedRoom.code}
                     </span>
                   </span>
-                  {selected ? <Check className="size-3.5 text-primary" /> : null}
+                  {selected ? (
+                    <Check className="size-3.5 text-primary" />
+                  ) : null}
                 </button>
               );
             })}
           </div>
         </aside>
 
-        <main className="min-h-0 overflow-y-auto">
-          <div className="mx-auto grid max-w-6xl gap-6 p-4 lg:grid-cols-[minmax(320px,420px)_minmax(0,1fr)] lg:p-6">
-            <section className="space-y-5">
+        <main className="min-w-0 lg:min-h-0 lg:overflow-y-auto">
+          <div className="mx-auto grid w-full min-w-0 max-w-6xl grid-cols-[minmax(0,1fr)] gap-5 p-3 pb-8 sm:gap-6 sm:p-5 xl:grid-cols-[minmax(0,420px)_minmax(0,1fr)] xl:p-6">
+            <section className="min-w-0 space-y-5">
               <div>
                 <h2 className="text-sm font-semibold">Presets</h2>
                 <p className="mt-1 text-xs text-muted-foreground">
@@ -238,7 +245,7 @@ function RoomThemeEditor({
                     key={id}
                     type="button"
                     onClick={() => setDraft(ROOM_THEME_PRESETS[id])}
-                    className="flex items-center gap-2 rounded-xl border bg-card p-3 text-left text-xs font-medium hover:border-primary/50"
+                    className="flex min-h-11 min-w-0 items-center gap-2 rounded-xl border bg-card p-3 text-left text-xs font-medium hover:border-primary/50"
                   >
                     <Icon className="size-4 text-primary" />
                     {label}
@@ -286,47 +293,90 @@ function RoomThemeEditor({
 
               <div className="overflow-hidden rounded-2xl border bg-card">
                 {COLOR_CONTROLS.map((control) => (
-                  <label
+                  <div
                     key={control.key}
-                    className="flex items-center gap-3 border-b px-4 py-3 last:border-b-0"
+                    className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-2 border-b px-3 py-3 last:border-b-0 sm:px-4"
                   >
                     <span className="min-w-0 flex-1 text-xs font-medium">
                       {control.label}
                     </span>
                     <span className="font-mono text-[10px] uppercase text-muted-foreground">
-                      {draft[control.key]}
+                      {draft[control.key] === "primary"
+                        ? "Primary"
+                        : draft[control.key]}
                     </span>
-                    <input
-                      type="color"
-                      value={draft[control.key]}
-                      onChange={(event) =>
-                        setDraft((current) => ({
-                          ...current,
-                          [control.key]: event.target.value,
-                        }))
-                      }
-                      className="size-8 cursor-pointer rounded-lg border bg-transparent p-1"
-                    />
-                  </label>
+                    <span
+                      className="relative size-9 shrink-0 overflow-hidden rounded-lg border"
+                      style={{
+                        backgroundColor:
+                          draft[control.key] === "primary"
+                            ? "var(--primary)"
+                            : draft[control.key],
+                      }}
+                    >
+                      <input
+                        type="color"
+                        aria-label={control.label}
+                        value={
+                          draft[control.key] === "primary"
+                            ? "#262626"
+                            : draft[control.key]
+                        }
+                        onChange={(event) =>
+                          setDraft((current) => ({
+                            ...current,
+                            [control.key]: event.target.value,
+                          }))
+                        }
+                        className="absolute inset-0 size-full cursor-pointer opacity-0"
+                      />
+                    </span>
+                    {control.key === "incomingBubble" && (
+                      <button
+                        type="button"
+                        aria-pressed={draft.incomingBubble === "primary"}
+                        className="col-span-3 min-h-9 justify-self-start rounded-md border px-3 text-xs hover:bg-accent"
+                        onClick={() =>
+                          setDraft((current) => ({
+                            ...current,
+                            incomingBubble: "primary",
+                          }))
+                        }
+                      >
+                        Use shadcn primary
+                      </button>
+                    )}
+                  </div>
                 ))}
               </div>
             </section>
 
-            <aside className="lg:sticky lg:top-6 lg:self-start">
+            <aside className="min-w-0 xl:sticky xl:top-6 xl:self-start">
               <p className="mb-2 text-[0.625rem] font-semibold uppercase tracking-wider text-muted-foreground">
                 Full chat preview
               </p>
               <div
-                className="flex min-h-[520px] flex-col overflow-hidden rounded-3xl border shadow-sm"
+                className="flex min-h-[320px] min-w-0 flex-col overflow-hidden rounded-2xl border shadow-sm sm:min-h-[420px] xl:min-h-[520px]"
                 style={getRoomThemeStyle(draft)}
               >
                 <div className="border-b bg-background/95 px-4 py-3">
-                  <p className="text-xs font-semibold text-foreground">{room.name}</p>
-                  <p className="font-mono text-[10px] text-muted-foreground">{room.code}</p>
+                  <p className="truncate text-xs font-semibold text-foreground">
+                    {room.name}
+                  </p>
+                  <p className="font-mono text-[10px] text-muted-foreground">
+                    {room.code}
+                  </p>
                 </div>
                 <div className="flex flex-1 flex-col justify-end gap-3 p-4">
-                  <PreviewBubble incoming text="Try the new room background." time="3:08 PM" />
-                  <PreviewBubble text="The hearts are subtle and readable!" time="3:09 PM" />
+                  <PreviewBubble
+                    incoming
+                    text="Try the new room background."
+                    time="3:08 PM"
+                  />
+                  <PreviewBubble
+                    text="The hearts are subtle and readable!"
+                    time="3:09 PM"
+                  />
                 </div>
                 <div className="border-t border-white/10 bg-black/15 p-3">
                   <div className="h-10 rounded-full border border-white/10 bg-black/20" />
@@ -369,7 +419,7 @@ function ChoiceButton({
       type="button"
       onClick={onClick}
       className={[
-        "rounded-lg border px-2 py-2 text-[0.6875rem] font-medium transition",
+        "min-h-10 min-w-0 rounded-lg border px-2 py-2 text-[0.6875rem] font-medium transition",
         active
           ? "border-primary bg-primary/10 text-primary"
           : "bg-card hover:bg-accent",
@@ -393,14 +443,20 @@ function PreviewBubble({
     <div className={incoming ? "flex justify-start" : "flex justify-end"}>
       <div
         className={[
-          "max-w-[80%] rounded-2xl px-3 py-1.5 shadow-sm",
+          "max-w-[85%] min-w-0 rounded-2xl border px-3 py-1.5 break-words shadow-sm",
           incoming
-            ? "border border-white/15 bg-[var(--chat-incoming)] text-[var(--chat-incoming-foreground)]"
-            : "border border-transparent bg-[var(--chat-outgoing)] text-[var(--chat-outgoing-foreground)]",
+            ? "border-[var(--chat-incoming-border)] bg-[var(--chat-incoming)] text-[var(--chat-incoming-foreground)]"
+            : "border-[var(--chat-outgoing-border)] bg-[var(--chat-outgoing)] text-[var(--chat-outgoing-foreground)]",
         ].join(" ")}
       >
         <p className="text-[13px] leading-5">{text}</p>
-        <p className={incoming ? "text-left text-[9px] opacity-55" : "text-right text-[9px] opacity-55"}>
+        <p
+          className={
+            incoming
+              ? "text-left text-[9px] opacity-55"
+              : "text-right text-[9px] opacity-55"
+          }
+        >
           {time}
         </p>
       </div>

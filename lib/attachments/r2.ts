@@ -26,6 +26,10 @@ export function r2() {
   return {
     client: new S3Client({
       region: "auto",
+      // Browser uploads provide their body later. Optional SDK checksums would
+      // otherwise sign the checksum of an empty body and reject the real file.
+      requestChecksumCalculation: "WHEN_REQUIRED",
+      responseChecksumValidation: "WHEN_REQUIRED",
       endpoint: `https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com`,
       credentials: {
         accessKeyId: R2_ACCESS_KEY_ID,

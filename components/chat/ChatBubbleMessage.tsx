@@ -130,7 +130,10 @@ export function ChatBubbleMessage({
           : {
               backgroundColor: isMe
                 ? "var(--chat-outgoing, var(--primary))"
-                : "var(--chat-incoming, var(--secondary))",
+                : "var(--chat-incoming, var(--primary))",
+              borderColor: isMe
+                ? "var(--chat-outgoing-border, #a3a3a3)"
+                : "var(--chat-incoming-border, #a3a3a3)",
               color: isMe
                 ? "var(--chat-outgoing-foreground, var(--primary-foreground))"
                 : "var(--chat-incoming-foreground, var(--secondary-foreground))",

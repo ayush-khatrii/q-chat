@@ -10,8 +10,19 @@ export const roomThemeSchema = z.object({
   surface: z.string().regex(/^#[0-9a-f]{6}$/i),
   outgoingBubble: z.string().regex(/^#[0-9a-f]{6}$/i),
   outgoingText: z.string().regex(/^#[0-9a-f]{6}$/i),
-  incomingBubble: z.string().regex(/^#[0-9a-f]{6}$/i),
+  outgoingBorder: z
+    .string()
+    .regex(/^#[0-9a-f]{6}$/i)
+    .default("#a3a3a3"),
+  incomingBubble: z.union([
+    z.string().regex(/^#[0-9a-f]{6}$/i),
+    z.literal("primary"),
+  ]),
   incomingText: z.string().regex(/^#[0-9a-f]{6}$/i),
+  incomingBorder: z
+    .string()
+    .regex(/^#[0-9a-f]{6}$/i)
+    .default("#a3a3a3"),
   pattern: z.enum(["none", "hearts", "grid", "lines", "dots"]),
   patternColor: z.string().regex(/^#[0-9a-f]{6}$/i),
   patternOpacity: z.enum(["subtle", "soft", "visible"]),
@@ -21,10 +32,12 @@ export type RoomTheme = z.infer<typeof roomThemeSchema>;
 
 export const DEFAULT_ROOM_THEME: RoomTheme = {
   surface: "#000000",
-  outgoingBubble: "#ffffff",
-  outgoingText: "#09090b",
-  incomingBubble: "#262626",
-  incomingText: "#fafafa",
+  outgoingBubble: "#262626",
+  outgoingText: "#efefef",
+  outgoingBorder: "#a3a3a3",
+  incomingBubble: "primary",
+  incomingText: "#efefef",
+  incomingBorder: "#a3a3a3",
   pattern: "none",
   patternColor: "#ffffff",
   patternOpacity: "subtle",
@@ -34,12 +47,25 @@ export function normalizeRoomTheme(value: unknown): RoomTheme {
   const parsed = roomThemeSchema.safeParse(value);
   if (!parsed.success) return DEFAULT_ROOM_THEME;
 
-  // Upgrade the old default without replacing customized room palettes.
-  const legacyDefault = { ...DEFAULT_ROOM_THEME, incomingBubble: "#000000" };
-  const isLegacyDefault = Object.entries(legacyDefault).every(
-    ([key, value]) => parsed.data[key as keyof RoomTheme].toLowerCase() === value,
-  );
-  return isLegacyDefault ? { ...DEFAULT_ROOM_THEME } : parsed.data;
+  // Upgrade both previous defaults, while keeping deliberately customized colors.
+  const previousDefault = {
+    surface: "#000000",
+    outgoingBubble: "#ffffff",
+    outgoingText: "#09090b",
+    incomingText: "#fafafa",
+    outgoingBorder: "#a3a3a3",
+    incomingBorder: "#a3a3a3",
+    pattern: "none",
+    patternColor: "#ffffff",
+    patternOpacity: "subtle",
+  };
+  const isPreviousDefault =
+    ["#000000", "#262626"].includes(parsed.data.incomingBubble.toLowerCase()) &&
+    Object.entries(previousDefault).every(
+      ([key, color]) =>
+        parsed.data[key as keyof RoomTheme].toLowerCase() === color,
+    );
+  return isPreviousDefault ? { ...DEFAULT_ROOM_THEME } : parsed.data;
 }
 
 export function normalizeCustomRoomCode(code?: string | null) {
@@ -56,38 +82,37 @@ export function normalizeCustomRoomCode(code?: string | null) {
     : `${ROOM_CODE_PREFIX}${upperCode}`;
 }
 
-export const createRoomSchema = z.object({
-  name: z
-    .string()
-    .trim()
-    .min(3, "Room name must be at least 3 characters long.")
-    .max(50, "Room name must be 50 characters or less."),
-  customCode: z
-    .string()
-    .trim()
-    .max(
-      MAX_CUSTOM_ROOM_CODE_LENGTH,
-      `Custom room code must be ${MAX_CUSTOM_ROOM_CODE_LENGTH} characters or less.`,
-    )
-    .regex(
-      /^[A-Za-z0-9-]*$/,
-      "Room code can only include letters, numbers, and hyphens.",
-    )
-    .optional(),
-}).superRefine((value, context) => {
-  const normalizedCode = normalizeCustomRoomCode(value.customCode);
+export const createRoomSchema = z
+  .object({
+    name: z
+      .string()
+      .trim()
+      .min(3, "Room name must be at least 3 characters long.")
+      .max(50, "Room name must be 50 characters or less."),
+    customCode: z
+      .string()
+      .trim()
+      .max(
+        MAX_CUSTOM_ROOM_CODE_LENGTH,
+        `Custom room code must be ${MAX_CUSTOM_ROOM_CODE_LENGTH} characters or less.`,
+      )
+      .regex(
+        /^[A-Za-z0-9-]*$/,
+        "Room code can only include letters, numbers, and hyphens.",
+      )
+      .optional(),
+  })
+  .superRefine((value, context) => {
+    const normalizedCode = normalizeCustomRoomCode(value.customCode);
 
-  if (
-    normalizedCode &&
-    normalizedCode.length > MAX_CUSTOM_ROOM_CODE_LENGTH
-  ) {
-    context.addIssue({
-      code: z.ZodIssueCode.custom,
-      path: ["customCode"],
-      message: `Room code must be ${MAX_CUSTOM_ROOM_CODE_LENGTH} characters or less including QC-.`,
-    });
-  }
-});
+    if (normalizedCode && normalizedCode.length > MAX_CUSTOM_ROOM_CODE_LENGTH) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["customCode"],
+        message: `Room code must be ${MAX_CUSTOM_ROOM_CODE_LENGTH} characters or less including QC-.`,
+      });
+    }
+  });
 
 export const joinRoomSchema = z.object({
   code: z

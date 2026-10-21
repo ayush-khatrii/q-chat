@@ -1,3 +1,4 @@
+import { Receiver } from "@upstash/qstash";
 import { verifySignatureAppRouter } from "@upstash/qstash/nextjs";
 import { cleanupAttachments } from "@/lib/attachments/cleanup";
 
@@ -7,14 +8,28 @@ export async function POST(request: Request) {
   // Check at request time, not import time, so builds work without secrets.
   if (
     !process.env.QSTASH_CURRENT_SIGNING_KEY ||
-    !process.env.QSTASH_NEXT_SIGNING_KEY
+    !process.env.QSTASH_NEXT_SIGNING_KEY ||
+    !process.env.APP_URL
   )
     return Response.json(
-      { error: "QStash signing keys are not configured." },
+      { error: "QStash signing keys and APP_URL are required." },
       { status: 503 },
     );
+  const destination = `${process.env.APP_URL.replace(/\/$/, "")}/api/attachments/cleanup`;
+  const receiver = new Receiver({
+    currentSigningKey: process.env.QSTASH_CURRENT_SIGNING_KEY,
+    nextSigningKey: process.env.QSTASH_NEXT_SIGNING_KEY,
+    devMode: false,
+  });
   const handler = verifySignatureAppRouter(
-    async () => {
+    async (verifiedRequest: Request) => {
+      // The App Router wrapper currently omits the URL when verifying.
+      // Verify it explicitly too, so tokens for other endpoints cannot be reused.
+      await receiver.verify({
+        signature: verifiedRequest.headers.get("upstash-signature")!,
+        body: await verifiedRequest.text(),
+        url: destination,
+      });
       try {
         return Response.json(await cleanupAttachments());
       } catch {
@@ -28,9 +43,7 @@ export async function POST(request: Request) {
       currentSigningKey: process.env.QSTASH_CURRENT_SIGNING_KEY,
       nextSigningKey: process.env.QSTASH_NEXT_SIGNING_KEY,
       devMode: false,
-      url: process.env.APP_URL
-        ? `${process.env.APP_URL.replace(/\/$/, "")}/api/attachments/cleanup`
-        : undefined,
+      url: destination,
     },
   );
   try {

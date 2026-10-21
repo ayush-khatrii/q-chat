@@ -425,7 +425,9 @@ test("cleanup endpoint fails closed for missing keys and invalid QStash signatur
   const previous = [
     process.env.QSTASH_CURRENT_SIGNING_KEY,
     process.env.QSTASH_NEXT_SIGNING_KEY,
+    process.env.APP_URL,
   ];
+  process.env.APP_URL = "https://chat.example";
   delete process.env.QSTASH_CURRENT_SIGNING_KEY;
   delete process.env.QSTASH_NEXT_SIGNING_KEY;
   let called = false;
@@ -456,6 +458,7 @@ test("cleanup endpoint fails closed for missing keys and invalid QStash signatur
     for (const [i, key] of [
       "QSTASH_CURRENT_SIGNING_KEY",
       "QSTASH_NEXT_SIGNING_KEY",
+      "APP_URL",
     ].entries()) {
       if (previous[i] === undefined) delete process.env[key];
       else process.env[key] = previous[i];
@@ -644,6 +647,50 @@ test("QStash accepts a valid signed body and rejects tampered bodies and destina
         assert.equal(cleaned, 1);
       },
     );
+  } finally {
+    keys.forEach((key, i) => {
+      if (old[i] === undefined) delete process.env[key];
+      else process.env[key] = old[i];
+    });
+  }
+});
+
+test("real AWS multipart signatures bind the byte length without an empty-body checksum", async () => {
+  const keys = [
+    "R2_ACCOUNT_ID",
+    "R2_ACCESS_KEY_ID",
+    "R2_SECRET_ACCESS_KEY",
+    "R2_BUCKET_NAME",
+  ];
+  const old = keys.map((key) => process.env[key]);
+  keys.forEach((key) => {
+    process.env[key] = "local-test";
+  });
+  try {
+    await withStubs({}, async () => {
+      const { r2 } = fresh("../lib/attachments/r2.ts");
+      const { client, bucket } = r2();
+      const { UploadPartCommand } = require("@aws-sdk/client-s3");
+      const { getSignedUrl } = require("@aws-sdk/s3-request-presigner");
+      const value = await getSignedUrl(
+        client,
+        new UploadPartCommand({
+          Bucket: bucket,
+          Key: "test-file",
+          UploadId: "test-upload",
+          PartNumber: 1,
+          ContentLength: 123,
+        }),
+        { expiresIn: 300 },
+      );
+      const url = new URL(value);
+      assert.equal(url.searchParams.has("x-amz-checksum-crc32"), false);
+      assert.match(
+        url.searchParams.get("X-Amz-SignedHeaders"),
+        /content-length/,
+      );
+      client.destroy();
+    });
   } finally {
     keys.forEach((key, i) => {
       if (old[i] === undefined) delete process.env[key];

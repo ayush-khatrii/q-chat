@@ -6,25 +6,22 @@ export const MAX_CUSTOM_ROOM_CODE_LENGTH = 20;
 export const MAX_ROOM_MEMBERS = 2;
 const ROOM_CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 
+const themeColorSchema = z.string().regex(/^#[0-9a-f]{6}$/i);
+const bubbleColorSchema = z.union([themeColorSchema, z.literal("primary")]);
+const bubbleBorderSchema = z
+  .union([themeColorSchema, z.literal("none")])
+  .default("none");
+
 export const roomThemeSchema = z.object({
-  surface: z.string().regex(/^#[0-9a-f]{6}$/i),
-  outgoingBubble: z.string().regex(/^#[0-9a-f]{6}$/i),
-  outgoingText: z.string().regex(/^#[0-9a-f]{6}$/i),
-  outgoingBorder: z
-    .string()
-    .regex(/^#[0-9a-f]{6}$/i)
-    .default("#a3a3a3"),
-  incomingBubble: z.union([
-    z.string().regex(/^#[0-9a-f]{6}$/i),
-    z.literal("primary"),
-  ]),
-  incomingText: z.string().regex(/^#[0-9a-f]{6}$/i),
-  incomingBorder: z
-    .string()
-    .regex(/^#[0-9a-f]{6}$/i)
-    .default("#a3a3a3"),
+  surface: themeColorSchema,
+  outgoingBubble: bubbleColorSchema,
+  outgoingText: themeColorSchema,
+  outgoingBorder: bubbleBorderSchema,
+  incomingBubble: bubbleColorSchema,
+  incomingText: themeColorSchema,
+  incomingBorder: bubbleBorderSchema,
   pattern: z.enum(["none", "hearts", "grid", "lines", "dots"]),
-  patternColor: z.string().regex(/^#[0-9a-f]{6}$/i),
+  patternColor: themeColorSchema,
   patternOpacity: z.enum(["subtle", "soft", "visible"]),
 });
 
@@ -32,12 +29,12 @@ export type RoomTheme = z.infer<typeof roomThemeSchema>;
 
 export const DEFAULT_ROOM_THEME: RoomTheme = {
   surface: "#000000",
-  outgoingBubble: "#262626",
+  outgoingBubble: "primary",
   outgoingText: "#efefef",
-  outgoingBorder: "#a3a3a3",
-  incomingBubble: "primary",
+  outgoingBorder: "none",
+  incomingBubble: "#262626",
   incomingText: "#efefef",
-  incomingBorder: "#a3a3a3",
+  incomingBorder: "none",
   pattern: "none",
   patternColor: "#ffffff",
   patternOpacity: "subtle",
@@ -47,24 +44,39 @@ export function normalizeRoomTheme(value: unknown): RoomTheme {
   const parsed = roomThemeSchema.safeParse(value);
   if (!parsed.success) return DEFAULT_ROOM_THEME;
 
-  // Upgrade both previous defaults, while keeping deliberately customized colors.
-  const previousDefault = {
-    surface: "#000000",
+  // Recognize complete historical default palettes, not individual color choices.
+  const oldWhiteTheme = {
+    ...DEFAULT_ROOM_THEME,
     outgoingBubble: "#ffffff",
     outgoingText: "#09090b",
     incomingText: "#fafafa",
     outgoingBorder: "#a3a3a3",
     incomingBorder: "#a3a3a3",
-    pattern: "none",
-    patternColor: "#ffffff",
-    patternOpacity: "subtle",
   };
-  const isPreviousDefault =
-    ["#000000", "#262626"].includes(parsed.data.incomingBubble.toLowerCase()) &&
-    Object.entries(previousDefault).every(
+  const previousDefaults = [
+    { ...oldWhiteTheme, incomingBubble: "#000000" },
+    { ...oldWhiteTheme, incomingBubble: "#262626" },
+    {
+      ...DEFAULT_ROOM_THEME,
+      outgoingBubble: "#262626",
+      incomingBubble: "primary",
+      outgoingBorder: "#a3a3a3",
+      incomingBorder: "#a3a3a3",
+    },
+  ];
+  const stored = value as Record<string, unknown>;
+  // Missing borders belonged to older versions. Explicit "none" is a user choice.
+  const previousTheme = {
+    ...parsed.data,
+    outgoingBorder: stored.outgoingBorder ?? "#a3a3a3",
+    incomingBorder: stored.incomingBorder ?? "#a3a3a3",
+  };
+  const isPreviousDefault = previousDefaults.some((previous) =>
+    Object.entries(previous).every(
       ([key, color]) =>
-        parsed.data[key as keyof RoomTheme].toLowerCase() === color,
-    );
+        String(previousTheme[key as keyof RoomTheme]).toLowerCase() === color,
+    ),
+  );
   return isPreviousDefault ? { ...DEFAULT_ROOM_THEME } : parsed.data;
 }
 

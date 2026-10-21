@@ -15,8 +15,6 @@ QChat is a real-time, room-based chat app built with Next.js, Ably Chat, and Pos
 - Browser push notifications through Firebase Cloud Messaging (FCM).
 - Private Cloudflare R2 file attachments, previews, and 24-hour expiry with hourly QStash cleanup.
 
-Message editing currently shows a “coming soon” notice. See the [attachment setup guide](docs/attachments.md) to configure R2, the required environment variables, and scheduled cleanup.
-
 ## Tech stack
 
 | Area | Technology |

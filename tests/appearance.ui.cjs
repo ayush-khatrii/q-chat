@@ -13,6 +13,7 @@ test(
   { timeout: 60000 },
   async () => {
     const mocks = {
+      "@ably/chat": 'export const ChatMessageAction={MessageDelete:"deleted"};',
       "next/navigation":
         "export const useRouter=()=>({back(){},replace(){}});export const useSearchParams=()=>new URLSearchParams();",
       "@/lib/auth-client":
@@ -22,7 +23,7 @@ test(
     const [bundle, css] = await Promise.all([
       build({
         stdin: {
-          contents: `import React from 'react';import {createRoot} from 'react-dom/client';import {QueryClient,QueryClientProvider} from '@tanstack/react-query';import Settings from './components/chat/ChatAppearanceSettings';createRoot(document.getElementById('root')).render(<QueryClientProvider client={new QueryClient()}><div className="flex h-dvh min-w-0 flex-col"><Settings/></div></QueryClientProvider>);`,
+          contents: `import React from 'react';import {createRoot} from 'react-dom/client';import {QueryClient,QueryClientProvider} from '@tanstack/react-query';import Settings from './components/chat/ChatAppearanceSettings';import {ChatBubbleMessage} from './components/chat/ChatBubbleMessage';import {getRoomThemeStyle} from './components/chat/chat-appearance';import {DEFAULT_ROOM_THEME} from './lib/rooms';import {TooltipProvider} from './components/ui/tooltip';const root=createRoot(document.getElementById('root'));window.renderActualBubbles=(theme=DEFAULT_ROOM_THEME)=>root.render(<TooltipProvider><div style={getRoomThemeStyle(theme)}>{[true,false].map(isMe=><ChatBubbleMessage key={String(isMe)} roomId="room" message={{serial:String(isMe),text:isMe?'My real message':'Received real message',timestamp:new Date(),metadata:{},clientId:isMe?'self':'other'}} senderName={isMe?'Me':'Other'} isMe={isMe} isPageVisible={false} onRead={async()=>false} onCopy={()=>{}} onDelete={()=>{}} onEdit={()=>{}} />)}</div></TooltipProvider>);root.render(<QueryClientProvider client={new QueryClient()}><div className="flex h-dvh min-w-0 flex-col"><Settings/></div></QueryClientProvider>);`,
           loader: "tsx",
           resolveDir: process.cwd(),
         },
@@ -143,13 +144,119 @@ test(
       await page.waitForTimeout(100);
       assert.equal(saved.outgoingBorder, "#123456");
       assert.equal(saved.incomingBorder, "#654321");
-      assert.equal(saved.incomingBubble, "primary");
+      assert.equal(saved.outgoingBubble, "primary");
+      assert.equal(saved.incomingBubble, "#262626");
       await page.getByRole("button", { name: "Reset", exact: true }).click();
+      for (const bubble of [outgoing, incoming]) {
+        assert.equal(
+          await bubble.evaluate(
+            (element) => getComputedStyle(element).borderTopWidth,
+          ),
+          "0px",
+        );
+      }
       assert.equal(
         await page
-          .getByLabel("Your bubble border", { exact: true })
-          .inputValue(),
-        "#a3a3a3",
+          .getByRole("button", {
+            name: "No border for your bubbles",
+            exact: true,
+          })
+          .getAttribute("aria-pressed"),
+        "true",
+      );
+      // Removing just one border must not affect the other bubble direction.
+      await page
+        .getByLabel("Your bubble border", { exact: true })
+        .fill("#123456");
+      await page
+        .getByLabel("Received bubble border", { exact: true })
+        .fill("#654321");
+      await page
+        .getByRole("button", {
+          name: "No border for your bubbles",
+          exact: true,
+        })
+        .click();
+      assert.equal(
+        await outgoing.evaluate(
+          (element) => getComputedStyle(element).borderTopWidth,
+        ),
+        "0px",
+      );
+      assert.equal(
+        await incoming.evaluate(
+          (element) => getComputedStyle(element).borderTopWidth,
+        ),
+        "1px",
+      );
+      await page
+        .getByRole("button", {
+          name: "No border for received bubbles",
+          exact: true,
+        })
+        .click();
+      await page
+        .getByRole("button", { name: "Save theme", exact: true })
+        .click();
+      await page.waitForTimeout(100);
+      assert.equal(saved.outgoingBorder, "none");
+      assert.equal(saved.incomingBorder, "none");
+      await page.evaluate(() => window.renderActualBubbles());
+      const actualOutgoing = page
+        .getByText("My real message", { exact: true })
+        .locator("..");
+      const actualIncoming = page
+        .getByText("Received real message", { exact: true })
+        .locator("..");
+      await actualOutgoing.waitFor();
+      for (const bubble of [actualOutgoing, actualIncoming])
+        assert.equal(
+          await bubble.evaluate(
+            (element) => getComputedStyle(element).borderTopWidth,
+          ),
+          "0px",
+        );
+      const primary = await page.evaluate(() => {
+        const probe = document.createElement("div");
+        probe.style.backgroundColor = "var(--primary)";
+        document.body.append(probe);
+        const color = getComputedStyle(probe).backgroundColor;
+        probe.remove();
+        return color;
+      });
+      assert.equal(
+        await actualOutgoing.evaluate(
+          (element) => getComputedStyle(element).backgroundColor,
+        ),
+        primary,
+      );
+      assert.equal(
+        await actualIncoming.evaluate(
+          (element) => getComputedStyle(element).backgroundColor,
+        ),
+        "rgb(38, 38, 38)",
+      );
+      await page.evaluate(
+        (theme) =>
+          window.renderActualBubbles({
+            ...theme,
+            outgoingBorder: "#123456",
+            incomingBorder: "#654321",
+          }),
+        DEFAULT_ROOM_THEME,
+      );
+      await page.waitForTimeout(50);
+      assert.equal(
+        await actualOutgoing.evaluate(
+          (element) => getComputedStyle(element).borderTopWidth,
+        ),
+        "1px",
+      );
+      assert.equal(
+        await actualIncoming.evaluate(
+          (element) => getComputedStyle(element).borderTopWidth,
+        ),
+        "1px",
       );
       assert.deepEqual(errors, []);
     } finally {

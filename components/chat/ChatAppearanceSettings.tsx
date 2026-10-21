@@ -303,7 +303,9 @@ function RoomThemeEditor({
                     <span className="font-mono text-[10px] uppercase text-muted-foreground">
                       {draft[control.key] === "primary"
                         ? "Primary"
-                        : draft[control.key]}
+                        : draft[control.key] === "none"
+                          ? "None"
+                          : draft[control.key]}
                     </span>
                     <span
                       className="relative size-9 shrink-0 overflow-hidden rounded-lg border"
@@ -311,15 +313,18 @@ function RoomThemeEditor({
                         backgroundColor:
                           draft[control.key] === "primary"
                             ? "var(--primary)"
-                            : draft[control.key],
+                            : draft[control.key] === "none"
+                              ? "transparent"
+                              : draft[control.key],
                       }}
                     >
                       <input
                         type="color"
                         aria-label={control.label}
                         value={
-                          draft[control.key] === "primary"
-                            ? "#262626"
+                          draft[control.key] === "primary" ||
+                          draft[control.key] === "none"
+                            ? "#a3a3a3"
                             : draft[control.key]
                         }
                         onChange={(event) =>
@@ -331,15 +336,32 @@ function RoomThemeEditor({
                         className="absolute inset-0 size-full cursor-pointer opacity-0"
                       />
                     </span>
-                    {control.key === "incomingBubble" && (
+                    {(control.key === "outgoingBorder" ||
+                      control.key === "incomingBorder") && (
                       <button
                         type="button"
-                        aria-pressed={draft.incomingBubble === "primary"}
+                        aria-label={`No border for ${control.key === "outgoingBorder" ? "your bubbles" : "received bubbles"}`}
+                        aria-pressed={draft[control.key] === "none"}
                         className="col-span-3 min-h-9 justify-self-start rounded-md border px-3 text-xs hover:bg-accent"
                         onClick={() =>
                           setDraft((current) => ({
                             ...current,
-                            incomingBubble: "primary",
+                            [control.key]: "none",
+                          }))
+                        }
+                      >
+                        No border
+                      </button>
+                    )}
+                    {control.key === "outgoingBubble" && (
+                      <button
+                        type="button"
+                        aria-pressed={draft.outgoingBubble === "primary"}
+                        className="col-span-3 min-h-9 justify-self-start rounded-md border px-3 text-xs hover:bg-accent"
+                        onClick={() =>
+                          setDraft((current) => ({
+                            ...current,
+                            outgoingBubble: "primary",
                           }))
                         }
                       >
@@ -442,6 +464,11 @@ function PreviewBubble({
   return (
     <div className={incoming ? "flex justify-start" : "flex justify-end"}>
       <div
+        style={{
+          borderWidth: incoming
+            ? "var(--chat-incoming-border-width, 0px)"
+            : "var(--chat-outgoing-border-width, 0px)",
+        }}
         className={[
           "max-w-[85%] min-w-0 rounded-2xl border px-3 py-1.5 break-words shadow-sm",
           incoming

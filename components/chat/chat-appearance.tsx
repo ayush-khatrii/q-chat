@@ -139,14 +139,23 @@ export function getRoomThemeStyle(theme: RoomTheme): React.CSSProperties {
     backgroundColor: theme.surface,
     backgroundImage,
     backgroundSize,
-    "--chat-outgoing": theme.outgoingBubble,
+    "--chat-outgoing":
+      theme.outgoingBubble === "primary"
+        ? "var(--primary)"
+        : theme.outgoingBubble,
     "--chat-outgoing-foreground": theme.outgoingText,
-    "--chat-outgoing-border": theme.outgoingBorder,
+    "--chat-outgoing-border":
+      theme.outgoingBorder === "none" ? "transparent" : theme.outgoingBorder,
+    "--chat-outgoing-border-width":
+      theme.outgoingBorder === "none" ? "0px" : "1px",
     "--chat-incoming":
       theme.incomingBubble === "primary"
         ? "var(--primary)"
         : theme.incomingBubble,
     "--chat-incoming-foreground": theme.incomingText,
-    "--chat-incoming-border": theme.incomingBorder,
+    "--chat-incoming-border":
+      theme.incomingBorder === "none" ? "transparent" : theme.incomingBorder,
+    "--chat-incoming-border-width":
+      theme.incomingBorder === "none" ? "0px" : "1px",
   } as React.CSSProperties;
 }

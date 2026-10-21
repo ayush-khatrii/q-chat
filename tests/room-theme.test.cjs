@@ -26,28 +26,64 @@ test("new and previous default palettes use requested colors and primary token",
     DEFAULT_ROOM_THEME,
   );
   assert.deepEqual(normalizeRoomTheme(null), DEFAULT_ROOM_THEME);
-  assert.equal(DEFAULT_ROOM_THEME.outgoingBubble, "#262626");
-  assert.equal(DEFAULT_ROOM_THEME.incomingBubble, "primary");
+  assert.deepEqual(
+    normalizeRoomTheme({
+      ...DEFAULT_ROOM_THEME,
+      outgoingBubble: "#262626",
+      incomingBubble: "primary",
+      outgoingBorder: "#a3a3a3",
+      incomingBorder: "#a3a3a3",
+    }),
+    DEFAULT_ROOM_THEME,
+  );
+  assert.equal(DEFAULT_ROOM_THEME.outgoingBubble, "primary");
+  assert.equal(DEFAULT_ROOM_THEME.incomingBubble, "#262626");
   assert.equal(DEFAULT_ROOM_THEME.incomingText, "#efefef");
   assert.equal(DEFAULT_ROOM_THEME.outgoingText, "#efefef");
   const style = getRoomThemeStyle(DEFAULT_ROOM_THEME);
-  assert.equal(style["--chat-incoming"], "var(--primary)");
-  assert.equal(style["--chat-incoming-border"], "#a3a3a3");
-  assert.equal(style["--chat-outgoing-border"], "#a3a3a3");
+  assert.equal(style["--chat-outgoing"], "var(--primary)");
+  assert.equal(style["--chat-incoming"], "#262626");
+  assert.equal(style["--chat-incoming-border"], "transparent");
+  assert.equal(style["--chat-incoming-border-width"], "0px");
+  assert.equal(style["--chat-outgoing-border"], "transparent");
+  assert.equal(style["--chat-outgoing-border-width"], "0px");
 });
 
 test("old custom palettes retain their colors while border colors can be saved independently", () => {
   const custom = normalizeRoomTheme({ ...previous, outgoingBubble: "#112233" });
   assert.equal(custom.outgoingBubble, "#112233");
   assert.equal(custom.incomingBubble, "#262626");
-  assert.equal(custom.outgoingBorder, "#a3a3a3");
-  assert.equal(custom.incomingBorder, "#a3a3a3");
+  assert.equal(custom.outgoingBorder, "none");
+  assert.equal(custom.incomingBorder, "none");
   const edited = {
     ...custom,
     outgoingBorder: "#123456",
     incomingBorder: "#abcdef",
   };
   assert.deepEqual(roomThemeSchema.parse(edited), edited);
+  assert.equal(
+    getRoomThemeStyle(edited)["--chat-outgoing-border-width"],
+    "1px",
+  );
+  assert.equal(
+    getRoomThemeStyle(edited)["--chat-incoming-border-width"],
+    "1px",
+  );
+  assert.deepEqual(normalizeRoomTheme(edited), edited);
+  assert.equal(
+    normalizeRoomTheme({
+      ...previous,
+      outgoingBorder: "#123456",
+      incomingBorder: "#abcdef",
+    }).outgoingBorder,
+    "#123456",
+  );
+  const borderlessCustom = {
+    ...DEFAULT_ROOM_THEME,
+    outgoingBubble: "#262626",
+    incomingBubble: "primary",
+  };
+  assert.deepEqual(normalizeRoomTheme(borderlessCustom), borderlessCustom);
   assert.equal(getRoomThemeStyle(edited)["--chat-incoming-border"], "#abcdef");
   for (const invalid of ["red", "var(--bad)", "url(evil)", "#abc"])
     assert.equal(
@@ -124,7 +160,11 @@ test("theme endpoint saves validated borders and primary color only for members"
       incomingBorder: "#654321",
     };
     assert.deepEqual((await (await patch(custom)).json()).theme, custom);
-    assert.equal(writes, 1);
+    assert.deepEqual(
+      (await (await patch(DEFAULT_ROOM_THEME)).json()).theme,
+      DEFAULT_ROOM_THEME,
+    );
+    assert.equal(writes, 2);
   } finally {
     Module._load = load;
   }

@@ -8,6 +8,7 @@ import {
   normalizeRoomTheme,
   normalizeCustomRoomCode,
 } from "@/lib/rooms";
+import { effectiveRoomRole, type PersistedRoomRole } from "@/lib/permissions";
 
 async function getAuthenticatedUser() {
   const session = await auth.api.getSession({
@@ -33,6 +34,7 @@ function serializeRoom(
       userId: string;
       roomId: string;
       joinedAt: Date;
+      role: PersistedRoomRole;
       user: {
         id: string;
         name: string | null;
@@ -46,6 +48,9 @@ function serializeRoom(
   },
   userId: string,
 ) {
+  const currentMembership = room.roomMembers.find(
+    (member) => member.userId === userId,
+  );
   return {
     id: room.id,
     name: room.name,
@@ -53,9 +58,15 @@ function serializeRoom(
     theme: normalizeRoomTheme(room.theme),
     ownerId: room.ownerId,
     isOwner: room.ownerId === userId,
+    currentUserRole: effectiveRoomRole(
+      room.ownerId,
+      userId,
+      currentMembership?.role,
+    ),
     memberCount: room._count.roomMembers,
     members: room.roomMembers.map((member) => ({
       ...member,
+      role: effectiveRoomRole(room.ownerId, member.userId, member.role),
       joinedAt: member.joinedAt.toISOString(),
     })),
     createdAt: room.createdAt.toISOString(),
@@ -103,6 +114,7 @@ export async function GET() {
           userId: true,
           roomId: true,
           joinedAt: true,
+          role: true,
           user: {
             select: {
               id: true,
@@ -154,6 +166,7 @@ export async function POST(request: Request) {
           roomMembers: {
             create: {
               userId: user.id,
+              role: "MEMBER",
             },
           },
         },
@@ -176,6 +189,7 @@ export async function POST(request: Request) {
               userId: true,
               roomId: true,
               joinedAt: true,
+              role: true,
               user: {
                 select: {
                   id: true,

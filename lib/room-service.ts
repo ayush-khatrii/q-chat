@@ -2,6 +2,7 @@ import "server-only";
 
 import prisma from "@/lib/prisma";
 import { normalizeRoomTheme, type UserRoom } from "@/lib/rooms";
+import { effectiveRoomRole, type PersistedRoomRole } from "@/lib/permissions";
 
 type RoomRecord = {
   id: string;
@@ -19,6 +20,7 @@ type RoomRecord = {
     userId: string;
     roomId: string;
     joinedAt: Date;
+    role: PersistedRoomRole;
     user: {
       id: string;
       name: string | null;
@@ -29,6 +31,9 @@ type RoomRecord = {
 };
 
 export function serializeRoom(room: RoomRecord, userId: string): UserRoom {
+  const currentMembership = room.roomMembers.find(
+    (member) => member.userId === userId,
+  );
   return {
     id: room.id,
     name: room.name,
@@ -36,9 +41,15 @@ export function serializeRoom(room: RoomRecord, userId: string): UserRoom {
     theme: normalizeRoomTheme(room.theme),
     ownerId: room.ownerId,
     isOwner: room.ownerId === userId,
+    currentUserRole: effectiveRoomRole(
+      room.ownerId,
+      userId,
+      currentMembership?.role,
+    ),
     memberCount: room._count.roomMembers,
     members: room.roomMembers.map((member) => ({
       ...member,
+      role: effectiveRoomRole(room.ownerId, member.userId, member.role),
       joinedAt: member.joinedAt.toISOString(),
     })),
     createdAt: room.createdAt.toISOString(),
@@ -72,6 +83,7 @@ export async function getRoomForMember(code: string, userId: string) {
           userId: true,
           roomId: true,
           joinedAt: true,
+          role: true,
           user: {
             select: {
               id: true,

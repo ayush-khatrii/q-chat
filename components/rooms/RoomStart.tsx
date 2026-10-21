@@ -7,18 +7,16 @@ import { Button } from "@/components/ui/button";
 import RoomCreateDialog from "@/components/rooms/RoomCreateDialog";
 import RoomJoinDialog from "@/components/rooms/RoomJoinDialog";
 import { useRooms } from "@/hooks/use-rooms";
+import NotificationCenter from "@/components/NotificationCenter";
 
 export default function RoomStart({ userId }: { userId: string }) {
   const router = useRouter();
   const [createOpen, setCreateOpen] = useState(false);
   const [joinOpen, setJoinOpen] = useState(false);
-  const {
-    createRoom,
-    joinRoom,
-    isCreating,
-    isJoining,
-    error,
-  } = useRooms(true, userId);
+  const { createRoom, joinRoom, isCreating, isJoining, error } = useRooms(
+    true,
+    userId,
+  );
 
   const handleCreate = async (name: string, customCode?: string) => {
     const room = await createRoom(name, customCode);
@@ -26,13 +24,17 @@ export default function RoomStart({ userId }: { userId: string }) {
   };
 
   const handleJoin = async (code: string) => {
-    const room = await joinRoom(code);
-    router.push(`/chat/${room.code}`);
+    const result = await joinRoom(code);
+    if (result.status === "joined") router.push(`/chat/${result.room.code}`);
+    return result;
   };
 
   return (
     <div className="flex min-h-0 flex-1 items-center justify-center px-4">
-      <div className="w-full max-w-md rounded-2xl border bg-card p-6 text-center shadow-sm">
+      <div className="relative w-full max-w-md rounded-2xl border bg-card p-6 text-center shadow-sm">
+        <div className="absolute right-3 top-3">
+          <NotificationCenter />
+        </div>
         <h1 className="text-xl font-semibold">Start chatting</h1>
         <p className="mt-2 text-sm text-muted-foreground">
           Create a room or enter a QC code shared by another user.

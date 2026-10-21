@@ -1,0 +1,4 @@
+CREATE TYPE "RoomRole" AS ENUM ('ADMIN', 'MEMBER');
+
+ALTER TABLE "RoomMember"
+ADD COLUMN "role" "RoomRole" NOT NULL DEFAULT 'MEMBER';

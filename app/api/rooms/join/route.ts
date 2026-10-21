@@ -3,31 +3,23 @@ import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 import { joinRoomSchema, MAX_ROOM_MEMBERS } from "@/lib/rooms";
-import { serializeRoom } from "@/lib/room-service";
-
-class RoomFullError extends Error {}
-
-function isTransactionConflict(error: unknown) {
-  return (
-    typeof error === "object" &&
-    error !== null &&
-    "code" in error &&
-    error.code === "P2034"
-  );
-}
+import { getRoomForMember } from "@/lib/room-service";
+import {
+  createJoinRequestTicket,
+  createRoomActivity,
+  publishRoomActivity,
+} from "@/lib/join-requests";
+import { sendActivityPush } from "@/lib/activity-push";
 
 export async function POST(request: Request) {
-  const session = await auth.api.getSession({
-    headers: await headers(),
-  });
-
+  const session = await auth.api.getSession({ headers: await headers() });
   if (!session?.user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const json = await request.json().catch(() => null);
-  const parsedBody = joinRoomSchema.safeParse(json);
-
+  const parsedBody = joinRoomSchema.safeParse(
+    await request.json().catch(() => null),
+  );
   if (!parsedBody.success) {
     return NextResponse.json(
       { error: parsedBody.error.issues[0]?.message ?? "Invalid room code." },
@@ -37,102 +29,61 @@ export async function POST(request: Request) {
 
   const room = await prisma.room.findUnique({
     where: { code: parsedBody.data.code },
-    select: { id: true },
+    select: {
+      id: true,
+      code: true,
+      name: true,
+      roomMembers: { select: { userId: true } },
+    },
   });
-
   if (!room) {
     return NextResponse.json({ error: "Room not found." }, { status: 404 });
   }
 
-  try {
-    for (let attempt = 0; attempt < 3; attempt += 1) {
-      try {
-        await prisma.$transaction(
-          async (transaction) => {
-            const existingMembership = await transaction.roomMember.findUnique({
-              where: {
-                userId_roomId: {
-                  userId: session.user.id,
-                  roomId: room.id,
-                },
-              },
-              select: { id: true },
-            });
-
-            if (existingMembership) {
-              return;
-            }
-
-            const memberCount = await transaction.roomMember.count({
-              where: { roomId: room.id },
-            });
-
-            if (memberCount >= MAX_ROOM_MEMBERS) {
-              throw new RoomFullError();
-            }
-
-            await transaction.roomMember.create({
-              data: {
-                userId: session.user.id,
-                roomId: room.id,
-              },
-            });
-          },
-          { isolationLevel: "Serializable" },
-        );
-
-        break;
-      } catch (error) {
-        if (isTransactionConflict(error) && attempt < 2) {
-          continue;
-        }
-
-        throw error;
-      }
-    }
-  } catch (error) {
-    if (error instanceof RoomFullError) {
-      return NextResponse.json(
-        { error: "This room is full. Rooms currently support only 2 members." },
-        { status: 409 },
-      );
-    }
-
-    throw error;
+  if (room.roomMembers.some((member) => member.userId === session.user.id)) {
+    const joinedRoom = await getRoomForMember(room.code, session.user.id);
+    return NextResponse.json({ status: "joined", room: joinedRoom });
   }
 
-  const joinedRoom = await prisma.room.findUniqueOrThrow({
-    where: { id: room.id },
-    select: {
-      id: true,
-      name: true,
-      code: true,
-      theme: true,
-      ownerId: true,
-      createdAt: true,
-      updatedAt: true,
-      _count: { select: { roomMembers: true } },
-      roomMembers: {
-        orderBy: { joinedAt: "asc" },
-        select: {
-          id: true,
-          userId: true,
-          roomId: true,
-          joinedAt: true,
-          user: {
-            select: {
-              id: true,
-              name: true,
-              email: true,
-              image: true,
-            },
-          },
-        },
+  if (room.roomMembers.length >= MAX_ROOM_MEMBERS) {
+    return NextResponse.json(
+      {
+        error: `This room is full. Rooms support up to ${MAX_ROOM_MEMBERS} members.`,
+      },
+      { status: 409 },
+    );
+  }
+
+  const { claims, ticket } = createJoinRequestTicket(room.id, session.user.id);
+  const activity = createRoomActivity({
+    id: claims.requestId,
+    type: "join.requested",
+    room: { id: room.id, code: room.code, name: room.name },
+    actor: {
+      id: session.user.id,
+      name: session.user.name,
+      email: session.user.email,
+      image: session.user.image ?? null,
+    },
+    request: { id: claims.requestId, ticket },
+    expiresAt: claims.expiresAt,
+  });
+  await publishRoomActivity(activity);
+  await sendActivityPush(
+    room.roomMembers.map((member) => member.userId),
+    activity,
+  );
+
+  return NextResponse.json(
+    {
+      status: "pending",
+      request: {
+        id: claims.requestId,
+        ticket,
+        expiresAt: new Date(claims.expiresAt).toISOString(),
+        room: activity.room,
       },
     },
-  });
-
-  return NextResponse.json({
-    room: serializeRoom(joinedRoom, session.user.id),
-  });
+    { status: 202 },
+  );
 }

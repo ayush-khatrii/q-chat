@@ -53,10 +53,16 @@ model RoomMember {
   user     User     @relation(fields: [userId], references: [id])
   room     Room     @relation(fields: [roomId], references: [id])
   joinedAt DateTime @default(now())
+  role     RoomRole @default(MEMBER)
 
   @@unique([userId, roomId])
   @@index([userId])
   @@index([roomId])
+}
+
+enum RoomRole {
+  ADMIN
+  MEMBER
 }
 
 model Message {

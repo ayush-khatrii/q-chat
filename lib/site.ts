@@ -4,7 +4,7 @@ export const siteUrl = new URL(
   process.env.NEXT_PUBLIC_APP_URL ?? "https://q-chat-dev.vercel.app",
 );
 export const siteDescription =
-  "Quick, hassle-free chatting. Sign in with Google, create or join a two-person room, and chat in real time from your phone or desktop.";
+  "Quick, hassle-free chatting. Sign in with Google, create or join moderated rooms for up to 50 people, and chat in real time from your phone or desktop.";
 export const privateMetadata = {
   robots: { index: false, follow: false },
   referrer: "no-referrer" as const,

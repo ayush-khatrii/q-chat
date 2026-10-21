@@ -17,15 +17,17 @@ import {
   LogIn,
   LogOut,
   Menu,
+  MoreHorizontal,
   MessagesSquare,
   Moon,
   Palette,
   Plus,
   Settings,
+  Search,
   Share2,
   ShieldCheck,
   Trash2,
-  UserMinus,
+  UserCog,
   Users,
   type LucideIcon,
 } from "lucide-react";
@@ -41,6 +43,14 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Input } from "@/components/ui/input";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { Switch } from "@/components/ui/switch";
 import GoogleOneTap from "@/components/auth/GoogleOneTap";
@@ -54,6 +64,13 @@ import { authClient } from "@/lib/auth-client";
 import type { UserRoom, UserRoomMember } from "@/lib/rooms";
 
 import { InstallApp } from "@/components/pwa/InstallApp";
+import NotificationCenter from "@/components/NotificationCenter";
+import { useRoomActivity } from "@/components/room-activity-context";
+import {
+  canChangeRole,
+  canRemoveMember,
+  type PersistedRoomRole,
+} from "@/lib/permissions";
 
 type RoomHeaderProps = {
   room: UserRoom;
@@ -104,20 +121,40 @@ export default function RoomHeader({ room, members }: RoomHeaderProps) {
   const [joinRoomOpen, setJoinRoomOpen] = useState(false);
   const [roomActionOpen, setRoomActionOpen] = useState(false);
   const [copied, setCopied] = useState(false);
-  const [shareStatus, setShareStatus] = useState<
-    "idle" | "shared" | "copied"
-  >("idle");
+  const [shareStatus, setShareStatus] = useState<"idle" | "shared" | "copied">(
+    "idle",
+  );
   const [mounted, setMounted] = useState(false);
   const [isRemovingRoom, setIsRemovingRoom] = useState(false);
   const [removingMemberId, setRemovingMemberId] = useState<string | null>(null);
-  const [memberToRemove, setMemberToRemove] =
-    useState<UserRoomMember | null>(null);
+  const [memberToRemove, setMemberToRemove] = useState<UserRoomMember | null>(
+    null,
+  );
   const [roomNotice, setRoomNotice] = useState<string | null>(null);
+  const [memberSearch, setMemberSearch] = useState("");
+  const [changingMemberId, setChangingMemberId] = useState<string | null>(null);
+  const [roleChange, setRoleChange] = useState<{
+    member: UserRoomMember;
+    role: PersistedRoomRole;
+  } | null>(null);
+  const activity = useRoomActivity();
 
   const currentRoom = room;
   const hasActiveRoom = true;
   const isResolvingRoom = false;
-  const membersToRender = members;
+  const roleOrder = { SUPER_ADMIN: 0, ADMIN: 1, MEMBER: 2 } as const;
+  const membersToRender = [...members]
+    .filter((member) => {
+      const query = memberSearch.trim().toLowerCase();
+      return (
+        !query || getDisplayName(member.user).toLowerCase().includes(query)
+      );
+    })
+    .sort(
+      (a, b) =>
+        roleOrder[a.role] - roleOrder[b.role] ||
+        Date.parse(a.joinedAt) - Date.parse(b.joinedAt),
+    );
   const memberCount = currentRoom.memberCount;
   const displayCode = currentRoom.code;
   const displayName = currentRoom.name;
@@ -125,6 +162,13 @@ export default function RoomHeader({ room, members }: RoomHeaderProps) {
   useEffect(() => {
     setMounted(true);
   }, []);
+
+  useEffect(() => {
+    const refresh = () => router.refresh();
+    window.addEventListener("qchat:membership-changed", refresh);
+    return () =>
+      window.removeEventListener("qchat:membership-changed", refresh);
+  }, [router]);
 
   const copyRoom = async () => {
     if (!currentRoom) {
@@ -177,9 +221,9 @@ export default function RoomHeader({ room, members }: RoomHeaderProps) {
   };
 
   const handleJoinRoom = async (code: string) => {
-    const joinedRoom = await joinRoom(code);
-
-    router.push(`/chat/${joinedRoom.code}`);
+    const result = await joinRoom(code);
+    if (result.status === "joined") router.push(`/chat/${result.room.code}`);
+    return result;
   };
 
   const handleRemoveRoom = async () => {
@@ -215,9 +259,9 @@ export default function RoomHeader({ room, members }: RoomHeaderProps) {
           credentials: "include",
         },
       );
-      const payload = (await response.json().catch(() => null)) as
-        | { error?: string }
-        | null;
+      const payload = (await response.json().catch(() => null)) as {
+        error?: string;
+      } | null;
 
       if (!response.ok) {
         throw new Error(payload?.error ?? "Unable to remove this member.");
@@ -228,10 +272,64 @@ export default function RoomHeader({ room, members }: RoomHeaderProps) {
       router.refresh();
     } catch (error) {
       setRoomNotice(
-        error instanceof Error ? error.message : "Unable to remove this member.",
+        error instanceof Error
+          ? error.message
+          : "Unable to remove this member.",
       );
     } finally {
       setRemovingMemberId(null);
+    }
+  };
+
+  const handleChangeRole = async (
+    member: UserRoomMember,
+    role: PersistedRoomRole,
+  ) => {
+    setChangingMemberId(member.userId);
+    setRoomNotice(null);
+    try {
+      const response = await fetch(
+        `/api/rooms/${currentRoom.id}/members/${encodeURIComponent(member.userId)}`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ role }),
+        },
+      );
+      const payload = (await response.json().catch(() => null)) as {
+        error?: string;
+      } | null;
+      if (!response.ok)
+        throw new Error(payload?.error ?? "Unable to update this role.");
+      setRoomNotice(
+        `${getDisplayName(member.user)} is now ${role === "ADMIN" ? "an admin" : "a member"}.`,
+      );
+      setRoleChange(null);
+      window.dispatchEvent(new Event("qchat:membership-changed"));
+      router.refresh();
+    } catch (error) {
+      setRoomNotice(
+        error instanceof Error ? error.message : "Unable to update this role.",
+      );
+    } finally {
+      setChangingMemberId(null);
+    }
+  };
+
+  const handleRequestDecision = async (
+    request: NonNullable<typeof activity>["pendingRequests"][number],
+    decision: "approve" | "reject",
+  ) => {
+    if (!activity) return;
+    setRoomNotice(null);
+    try {
+      await activity.decideRequest(request, decision);
+    } catch (error) {
+      setRoomNotice(
+        error instanceof Error
+          ? error.message
+          : "Unable to update this request.",
+      );
     }
   };
 
@@ -280,6 +378,7 @@ export default function RoomHeader({ room, members }: RoomHeaderProps) {
           </div>
         </div>
 
+        {session ? <NotificationCenter /> : null}
         {session ? <UserDropdown session={session} /> : <GoogleOneTap />}
 
         <Sheet open={menuOpen} onOpenChange={setMenuOpen}>
@@ -318,83 +417,229 @@ export default function RoomHeader({ room, members }: RoomHeaderProps) {
                 <div className="rounded-2xl border bg-card p-2.5 text-card-foreground shadow-sm">
                   <div className="flex items-center justify-between gap-3 px-2 py-1.5">
                     <div>
-                      <p className="text-xs font-semibold">
-                        {hasActiveRoom ? "Members" : "Room status"}
-                      </p>
+                      <p className="text-xs font-semibold">Members</p>
                       <p className="text-[0.625rem] text-muted-foreground">
-                        {hasActiveRoom
-                          ? "Current room membership"
-                          : isResolvingRoom
-                            ? room.name
-                            : "The current chat is visible, but no database room has been created yet."}
+                        Manage current room membership
                       </p>
                     </div>
-                    <Badge variant={hasActiveRoom ? "secondary" : "outline"}>
-                      {hasActiveRoom
-                        ? `${memberCount} total`
-                        : "Preview"}
-                    </Badge>
+                    <Badge variant="secondary">{memberCount} / 50</Badge>
                   </div>
-                  {hasActiveRoom ? (
-                    <div className="mt-1 space-y-1">
-                      {membersToRender.map((member) => (
-                        <div
-                          key={member.id}
-                          className="flex items-center gap-2 rounded-md px-2 py-1.5"
-                        >
-                          <Avatar className="size-7">
-                            <AvatarImage
-                              src={member.user.image ?? undefined}
-                              alt={getDisplayName(member.user)}
-                            />
-                            <AvatarFallback className="text-[0.625rem]">
-                              {getInitials(member.user)}
-                            </AvatarFallback>
-                          </Avatar>
-                          <div className="min-w-0 flex-1">
-                            <Link
-                              href={`/users/${member.userId}`}
-                              className="block truncate text-xs font-medium hover:text-primary hover:underline"
+                  <div className="relative mx-2 my-2">
+                    <Search className="absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+                    <Input
+                      value={memberSearch}
+                      onChange={(event) => setMemberSearch(event.target.value)}
+                      placeholder="Search members"
+                      className="h-8 pl-8 text-xs"
+                    />
+                  </div>
+                  <ScrollArea className="max-h-[min(40vh,20rem)]">
+                    <div className="space-y-1 px-1 pb-1">
+                      {membersToRender.map((member) => {
+                        const removable = canRemoveMember(
+                          currentRoom.currentUserRole,
+                          member.role,
+                        );
+                        const promotable = canChangeRole(
+                          currentRoom.currentUserRole,
+                          member.role,
+                          "ADMIN",
+                        );
+                        const demotable = canChangeRole(
+                          currentRoom.currentUserRole,
+                          member.role,
+                          "MEMBER",
+                        );
+                        return (
+                          <div
+                            key={member.id}
+                            className="flex items-center gap-2 rounded-xl px-2 py-2 hover:bg-muted/50"
+                          >
+                            <Avatar className="size-8">
+                              <AvatarImage
+                                src={member.user.image ?? undefined}
+                                alt={getDisplayName(member.user)}
+                              />
+                              <AvatarFallback className="text-[0.625rem]">
+                                {getInitials(member.user)}
+                              </AvatarFallback>
+                            </Avatar>
+                            <div className="min-w-0 flex-1">
+                              <p className="truncate text-xs font-semibold">
+                                {getDisplayName(member.user)}
+                              </p>
+                              <p className="truncate text-[0.625rem] text-muted-foreground">
+                                Joined {formatJoinedAt(member.joinedAt)}
+                              </p>
+                            </div>
+                            <Badge
+                              variant={
+                                member.role === "SUPER_ADMIN"
+                                  ? "default"
+                                  : member.role === "ADMIN"
+                                    ? "secondary"
+                                    : "outline"
+                              }
                             >
-                              {getDisplayName(member.user)}
-                            </Link>
-                            <p className="truncate text-[0.625rem] text-muted-foreground">
-                              Joined {formatJoinedAt(member.joinedAt)}
-                            </p>
+                              {member.role === "SUPER_ADMIN"
+                                ? "Super Admin"
+                                : member.role === "ADMIN"
+                                  ? "Admin"
+                                  : "Member"}
+                            </Badge>
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button
+                                  type="button"
+                                  size="icon-sm"
+                                  variant="ghost"
+                                  aria-label={`Actions for ${getDisplayName(member.user)}`}
+                                  disabled={
+                                    changingMemberId !== null ||
+                                    removingMemberId !== null
+                                  }
+                                >
+                                  <MoreHorizontal />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end" className="w-44">
+                                <DropdownMenuItem asChild>
+                                  <Link href={`/users/${member.userId}`}>
+                                    View profile
+                                  </Link>
+                                </DropdownMenuItem>
+                                {promotable || demotable || removable ? (
+                                  <DropdownMenuSeparator />
+                                ) : null}
+                                {promotable ? (
+                                  <DropdownMenuItem
+                                    onSelect={() =>
+                                      setRoleChange({ member, role: "ADMIN" })
+                                    }
+                                  >
+                                    <UserCog />
+                                    Promote to admin
+                                  </DropdownMenuItem>
+                                ) : null}
+                                {demotable ? (
+                                  <DropdownMenuItem
+                                    onSelect={() =>
+                                      setRoleChange({ member, role: "MEMBER" })
+                                    }
+                                  >
+                                    <UserCog />
+                                    Demote to member
+                                  </DropdownMenuItem>
+                                ) : null}
+                                {removable ? (
+                                  <DropdownMenuItem
+                                    variant="destructive"
+                                    onSelect={() => setMemberToRemove(member)}
+                                  >
+                                    Remove from room
+                                  </DropdownMenuItem>
+                                ) : null}
+                              </DropdownMenuContent>
+                            </DropdownMenu>
                           </div>
-                          <div className="flex shrink-0 items-center gap-1.5">
-                            {member.userId === currentRoom?.ownerId ? (
-                              <Badge variant="default">Admin</Badge>
-                            ) : (
-                              <Badge variant="outline">Member</Badge>
-                            )}
-                            {currentRoom.isOwner &&
-                              member.userId !== currentRoom.ownerId ? (
-                              <Button
-                                type="button"
-                                variant="destructive"
-                                size="icon-sm"
-                                aria-label={`Remove ${getDisplayName(member.user)}`}
-                                title={`Remove ${getDisplayName(member.user)}`}
-                                disabled={removingMemberId !== null}
-                                onClick={() => {
-                                  setMenuOpen(false);
-                                  setMemberToRemove(member);
-                                }}
-                              >
-                                <UserMinus />
-                              </Button>
-                            ) : null}
-                          </div>
-                        </div>
-                      ))}
+                        );
+                      })}
+                      {!membersToRender.length ? (
+                        <p className="p-4 text-center text-xs text-muted-foreground">
+                          No members match your search.
+                        </p>
+                      ) : null}
                     </div>
-                  ) : (
-                    <div className="mt-2 rounded-md bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
-                      Use Create new room to make a private room code for this chat.
-                    </div>
-                  )}
+                  </ScrollArea>
                 </div>
+
+                {activity?.pendingRequests.some(
+                  (request) => request.room.id === currentRoom.id,
+                ) ? (
+                  <div className="rounded-2xl border bg-card p-2.5 shadow-sm">
+                    <div className="flex items-center justify-between px-2 py-1.5">
+                      <p className="text-xs font-semibold">Pending requests</p>
+                      <Badge variant="secondary">
+                        {
+                          activity.pendingRequests.filter(
+                            (request) => request.room.id === currentRoom.id,
+                          ).length
+                        }
+                      </Badge>
+                    </div>
+                    <ScrollArea className="max-h-48">
+                      <div className="space-y-2 p-1">
+                        {activity.pendingRequests
+                          .filter(
+                            (request) => request.room.id === currentRoom.id,
+                          )
+                          .map((request) => (
+                            <div
+                              key={request.id}
+                              className="rounded-xl border p-2.5"
+                            >
+                              <div className="flex items-center gap-2">
+                                <Avatar className="size-8">
+                                  <AvatarImage
+                                    src={request.actor.image ?? undefined}
+                                  />
+                                  <AvatarFallback className="text-[10px]">
+                                    {getInitials(request.actor)}
+                                  </AvatarFallback>
+                                </Avatar>
+                                <div className="min-w-0 flex-1">
+                                  <p className="truncate text-xs font-medium">
+                                    {request.actor.name ?? request.actor.email}
+                                  </p>
+                                  <p className="text-[10px] text-muted-foreground">
+                                    Waiting for approval
+                                  </p>
+                                </div>
+                              </div>
+                              {activity.canDecide(currentRoom.id) ? (
+                                <div className="mt-2 grid grid-cols-3 gap-1.5">
+                                  <Button
+                                    size="sm"
+                                    onClick={() =>
+                                      void handleRequestDecision(
+                                        request,
+                                        "approve",
+                                      )
+                                    }
+                                  >
+                                    Approve
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() =>
+                                      activity.ignoreRequest(
+                                        request.request?.id ?? request.id,
+                                      )
+                                    }
+                                  >
+                                    Ignore
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    variant="destructive"
+                                    onClick={() =>
+                                      void handleRequestDecision(
+                                        request,
+                                        "reject",
+                                      )
+                                    }
+                                  >
+                                    Reject
+                                  </Button>
+                                </div>
+                              ) : null}
+                            </div>
+                          ))}
+                      </div>
+                    </ScrollArea>
+                  </div>
+                ) : null}
 
                 <MenuSection icon={Folder} title="Workspace">
                   <MenuButton
@@ -444,7 +689,9 @@ export default function RoomHeader({ room, members }: RoomHeaderProps) {
                   {hasActiveRoom ? (
                     <MenuButton
                       icon={currentRoom?.isOwner ? Trash2 : LogOut}
-                      label={currentRoom?.isOwner ? "Delete room" : "Leave room"}
+                      label={
+                        currentRoom?.isOwner ? "Delete room" : "Leave room"
+                      }
                       tone="destructive"
                       onClick={() => setRoomActionOpen(true)}
                     />
@@ -543,9 +790,11 @@ export default function RoomHeader({ room, members }: RoomHeaderProps) {
           <DialogHeader>
             <DialogTitle>Remove member</DialogTitle>
             <DialogDescription>
-              Remove {memberToRemove
+              Remove{" "}
+              {memberToRemove
                 ? getDisplayName(memberToRemove.user)
-                : "this member"} from this room? They will need to join again to continue chatting.
+                : "this member"}{" "}
+              from this room? They will need to join again to continue chatting.
             </DialogDescription>
           </DialogHeader>
 
@@ -598,7 +847,44 @@ export default function RoomHeader({ room, members }: RoomHeaderProps) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </section >
+      <Dialog
+        open={roleChange !== null}
+        onOpenChange={(open) => {
+          if (!open && changingMemberId === null) setRoleChange(null);
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              {roleChange?.role === "ADMIN" ? "Promote member" : "Demote admin"}
+            </DialogTitle>
+            <DialogDescription>
+              {roleChange
+                ? `${getDisplayName(roleChange.member.user)} will become ${roleChange.role === "ADMIN" ? "an admin who can approve requests, remove members, and promote members" : "a member with chat and viewing access"}.`
+                : "Confirm this role change."}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              disabled={changingMemberId !== null}
+              onClick={() => setRoleChange(null)}
+            >
+              Cancel
+            </Button>
+            <Button
+              disabled={!roleChange || changingMemberId !== null}
+              onClick={() => {
+                if (roleChange)
+                  void handleChangeRole(roleChange.member, roleChange.role);
+              }}
+            >
+              {changingMemberId ? "Updating..." : "Confirm role change"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </section>
   );
 }
 
@@ -647,7 +933,13 @@ function MenuButton({
       }
       onClick={onClick}
     >
-      <span className={tone === "destructive" ? "flex size-7 items-center justify-center rounded-lg bg-destructive/10" : "flex size-7 items-center justify-center rounded-lg bg-muted text-muted-foreground group-hover:bg-background"}>
+      <span
+        className={
+          tone === "destructive"
+            ? "flex size-7 items-center justify-center rounded-lg bg-destructive/10"
+            : "flex size-7 items-center justify-center rounded-lg bg-muted text-muted-foreground group-hover:bg-background"
+        }
+      >
         <Icon className="size-3.5" />
       </span>
       <span className="min-w-0 flex-1 truncate">{label}</span>

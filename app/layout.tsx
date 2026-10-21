@@ -8,6 +8,7 @@ import { Toaster } from "sonner";
 
 import { PwaProvider } from "@/components/pwa/InstallApp";
 import { siteDescription, siteUrl } from "@/lib/site";
+import AppAblyProvider from "@/providers/AblyProvider";
 
 export const viewport: Viewport = { themeColor: "#09090b" };
 
@@ -99,7 +100,9 @@ export default function RootLayout({
         <ThemeProvider attribute="class" defaultTheme="dark">
           <TooltipProvider>
             <Toaster position="bottom-right" richColors />
-            <PwaProvider>{children}</PwaProvider>
+            <PwaProvider>
+              <AppAblyProvider>{children}</AppAblyProvider>
+            </PwaProvider>
           </TooltipProvider>
         </ThemeProvider>
       </body>

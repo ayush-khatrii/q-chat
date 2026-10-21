@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useState } from "react";
-import type { UserRoom } from "@/lib/rooms";
+import type { JoinRoomResult, UserRoom } from "@/lib/rooms";
 
 type RoomsResponse = {
   rooms: UserRoom[];
@@ -8,6 +8,15 @@ type RoomsResponse = {
 type CreateRoomResponse = {
   room: UserRoom;
 };
+
+function isJoinRoomResult(payload: unknown): payload is JoinRoomResult {
+  return Boolean(
+    payload &&
+    typeof payload === "object" &&
+    "status" in payload &&
+    (payload.status === "joined" || payload.status === "pending"),
+  );
+}
 
 type RemoveRoomResponse = {
   action: "deleted" | "left";
@@ -121,187 +130,195 @@ export function useRooms(enabled = true, cacheScope?: string | null) {
     }
   }, [cacheKey, enabled]);
 
-  const fetchRooms = useCallback(async (showBlockingLoader = false) => {
-    if (!enabled) {
-      setRooms([]);
-      setIsLoading(false);
-      setHasLoaded(false);
-      setError(null);
-      return;
-    }
-
-    setIsLoading(showBlockingLoader);
-
-    try {
-      const response = await fetch("/api/rooms", {
-        credentials: "include",
-        cache: "no-store",
-      });
-
-      const payload = (await response.json().catch(() => null)) as
-        | RoomsResponse
-        | { error?: string }
-        | null;
-
-      if (!response.ok) {
-        throw new Error(getPayloadError(payload, "Unable to load your rooms."));
+  const fetchRooms = useCallback(
+    async (showBlockingLoader = false) => {
+      if (!enabled) {
+        setRooms([]);
+        setIsLoading(false);
+        setHasLoaded(false);
+        setError(null);
+        return;
       }
 
-      const nextRooms = isRoomsResponse(payload) ? payload.rooms : [];
+      setIsLoading(showBlockingLoader);
 
-      setRooms(nextRooms);
-      writeCachedRooms(cacheKey, nextRooms);
-      setError(null);
-    } catch (fetchError) {
-      setError(
-        fetchError instanceof Error
-          ? fetchError.message
-          : "Unable to load your rooms.",
-      );
-    } finally {
-      setHasLoaded(true);
-      setIsLoading(false);
-    }
-  }, [cacheKey, enabled]);
+      try {
+        const response = await fetch("/api/rooms", {
+          credentials: "include",
+          cache: "no-store",
+        });
 
-  const createRoom = useCallback(async (name: string, customCode?: string) => {
-    setIsCreating(true);
+        const payload = (await response.json().catch(() => null)) as
+          RoomsResponse | { error?: string } | null;
 
-    try {
-      const response = await fetch("/api/rooms", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        credentials: "include",
-        body: JSON.stringify({ name, customCode }),
-      });
-
-      const payload = (await response.json().catch(() => null)) as
-        | CreateRoomResponse
-        | { error?: string }
-        | null;
-
-      if (!response.ok || !isCreateRoomResponse(payload)) {
-        throw new Error(getPayloadError(payload, "Unable to create your room."));
-      }
-
-      setRooms((currentRooms) => {
-        const nextRooms = [payload.room, ...currentRooms];
-
-        writeCachedRooms(cacheKey, nextRooms);
-
-        return nextRooms;
-      });
-      setHasLoaded(true);
-      setError(null);
-
-      window.dispatchEvent(new Event("qchat:membership-changed"));
-      return payload.room;
-    } catch (createError) {
-      const message =
-        createError instanceof Error
-          ? createError.message
-          : "Unable to create your room.";
-
-      setError(message);
-      throw createError;
-    } finally {
-      setIsCreating(false);
-    }
-  }, [cacheKey]);
-
-  const removeRoom = useCallback(async (roomId: string) => {
-    try {
-      const response = await fetch(`/api/rooms/${roomId}`, {
-        method: "DELETE",
-        credentials: "include",
-      });
-
-      const payload = (await response.json().catch(() => null)) as
-        | RemoveRoomResponse
-        | { error?: string }
-        | null;
-
-      if (!response.ok) {
-        throw new Error(getPayloadError(payload, "Unable to update room."));
-      }
-
-      setRooms((currentRooms) => {
-        const nextRooms = currentRooms.filter((room) => room.id !== roomId);
-
-        if (nextRooms.length > 0) {
-          writeCachedRooms(cacheKey, nextRooms);
-        } else {
-          clearCachedRooms(cacheKey);
+        if (!response.ok) {
+          throw new Error(
+            getPayloadError(payload, "Unable to load your rooms."),
+          );
         }
 
-        return nextRooms;
-      });
-      setHasLoaded(true);
-      setError(null);
+        const nextRooms = isRoomsResponse(payload) ? payload.rooms : [];
 
-      window.dispatchEvent(new Event("qchat:membership-changed"));
-      return payload && "action" in payload ? payload.action : "deleted";
-    } catch (removeError) {
-      const message =
-        removeError instanceof Error
-          ? removeError.message
-          : "Unable to update room.";
-
-      setError(message);
-      throw removeError;
-    }
-  }, [cacheKey]);
-
-  const joinRoom = useCallback(async (code: string) => {
-    setIsJoining(true);
-
-    try {
-      const response = await fetch("/api/rooms/join", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        credentials: "include",
-        body: JSON.stringify({ code }),
-      });
-
-      const payload = (await response.json().catch(() => null)) as
-        | CreateRoomResponse
-        | { error?: string }
-        | null;
-
-      if (!response.ok || !isCreateRoomResponse(payload)) {
-        throw new Error(getPayloadError(payload, "Unable to join the room."));
-      }
-
-      setRooms((currentRooms) => {
-        const withoutDuplicate = currentRooms.filter(
-          (room) => room.id !== payload.room.id,
-        );
-        const nextRooms = [payload.room, ...withoutDuplicate];
-
+        setRooms(nextRooms);
         writeCachedRooms(cacheKey, nextRooms);
-        return nextRooms;
-      });
-      setHasLoaded(true);
-      setError(null);
+        setError(null);
+      } catch (fetchError) {
+        setError(
+          fetchError instanceof Error
+            ? fetchError.message
+            : "Unable to load your rooms.",
+        );
+      } finally {
+        setHasLoaded(true);
+        setIsLoading(false);
+      }
+    },
+    [cacheKey, enabled],
+  );
 
-      window.dispatchEvent(new Event("qchat:membership-changed"));
-      return payload.room;
-    } catch (joinError) {
-      const message =
-        joinError instanceof Error
-          ? joinError.message
-          : "Unable to join the room.";
+  const createRoom = useCallback(
+    async (name: string, customCode?: string) => {
+      setIsCreating(true);
 
-      setError(message);
-      throw joinError;
-    } finally {
-      setIsJoining(false);
-    }
-  }, [cacheKey]);
+      try {
+        const response = await fetch("/api/rooms", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          credentials: "include",
+          body: JSON.stringify({ name, customCode }),
+        });
+
+        const payload = (await response.json().catch(() => null)) as
+          CreateRoomResponse | { error?: string } | null;
+
+        if (!response.ok || !isCreateRoomResponse(payload)) {
+          throw new Error(
+            getPayloadError(payload, "Unable to create your room."),
+          );
+        }
+
+        setRooms((currentRooms) => {
+          const nextRooms = [payload.room, ...currentRooms];
+
+          writeCachedRooms(cacheKey, nextRooms);
+
+          return nextRooms;
+        });
+        setHasLoaded(true);
+        setError(null);
+
+        window.dispatchEvent(new Event("qchat:membership-changed"));
+        return payload.room;
+      } catch (createError) {
+        const message =
+          createError instanceof Error
+            ? createError.message
+            : "Unable to create your room.";
+
+        setError(message);
+        throw createError;
+      } finally {
+        setIsCreating(false);
+      }
+    },
+    [cacheKey],
+  );
+
+  const removeRoom = useCallback(
+    async (roomId: string) => {
+      try {
+        const response = await fetch(`/api/rooms/${roomId}`, {
+          method: "DELETE",
+          credentials: "include",
+        });
+
+        const payload = (await response.json().catch(() => null)) as
+          RemoveRoomResponse | { error?: string } | null;
+
+        if (!response.ok) {
+          throw new Error(getPayloadError(payload, "Unable to update room."));
+        }
+
+        setRooms((currentRooms) => {
+          const nextRooms = currentRooms.filter((room) => room.id !== roomId);
+
+          if (nextRooms.length > 0) {
+            writeCachedRooms(cacheKey, nextRooms);
+          } else {
+            clearCachedRooms(cacheKey);
+          }
+
+          return nextRooms;
+        });
+        setHasLoaded(true);
+        setError(null);
+
+        window.dispatchEvent(new Event("qchat:membership-changed"));
+        return payload && "action" in payload ? payload.action : "deleted";
+      } catch (removeError) {
+        const message =
+          removeError instanceof Error
+            ? removeError.message
+            : "Unable to update room.";
+
+        setError(message);
+        throw removeError;
+      }
+    },
+    [cacheKey],
+  );
+
+  const joinRoom = useCallback(
+    async (code: string) => {
+      setIsJoining(true);
+
+      try {
+        const response = await fetch("/api/rooms/join", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          credentials: "include",
+          body: JSON.stringify({ code }),
+        });
+
+        const payload = (await response.json().catch(() => null)) as
+          JoinRoomResult | { error?: string } | null;
+
+        if (!response.ok || !isJoinRoomResult(payload)) {
+          throw new Error(getPayloadError(payload, "Unable to join the room."));
+        }
+
+        if (payload.status === "joined") {
+          setRooms((currentRooms) => {
+            const withoutDuplicate = currentRooms.filter(
+              (room) => room.id !== payload.room.id,
+            );
+            const nextRooms = [payload.room, ...withoutDuplicate];
+            writeCachedRooms(cacheKey, nextRooms);
+            return nextRooms;
+          });
+          window.dispatchEvent(new Event("qchat:membership-changed"));
+        }
+        setHasLoaded(true);
+        setError(null);
+        return payload;
+      } catch (joinError) {
+        const message =
+          joinError instanceof Error
+            ? joinError.message
+            : "Unable to join the room.";
+
+        setError(message);
+        throw joinError;
+      } finally {
+        setIsJoining(false);
+      }
+    },
+    [cacheKey],
+  );
 
   useEffect(() => {
     void fetchRooms(false);

@@ -4,6 +4,7 @@ import { headers } from "next/headers";
 import { auth } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 import { readReceiptChannel } from "@/lib/read-receipts";
+import { roomActivityChannel, userActivityChannel } from "@/lib/room-activity";
 
 export async function GET() {
   try {
@@ -55,6 +56,13 @@ export async function GET() {
             ["subscribe", "publish"],
           ]),
         ),
+        ...Object.fromEntries(
+          memberships.map(({ roomId }) => [
+            roomActivityChannel(roomId),
+            ["subscribe", "history"],
+          ]),
+        ),
+        [userActivityChannel(session.user.id)]: ["subscribe", "history"],
       }),
     });
 

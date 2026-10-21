@@ -1,9 +1,10 @@
 import { z } from "zod";
+import type { RoomRole } from "@/lib/permissions";
 
 export const ROOM_CODE_PREFIX = "QC-";
 export const ROOM_CODE_LENGTH = 6;
 export const MAX_CUSTOM_ROOM_CODE_LENGTH = 20;
-export const MAX_ROOM_MEMBERS = 2;
+export const MAX_ROOM_MEMBERS = 50;
 const ROOM_CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 
 const themeColorSchema = z.string().regex(/^#[0-9a-f]{6}$/i);
@@ -139,6 +140,7 @@ export type UserRoomMember = {
   userId: string;
   roomId: string;
   joinedAt: string;
+  role: RoomRole;
   user: {
     id: string;
     name: string | null;
@@ -153,12 +155,24 @@ export type UserRoom = {
   code: string;
   ownerId: string;
   isOwner: boolean;
+  currentUserRole: RoomRole;
   memberCount: number;
   members: UserRoomMember[];
   theme: RoomTheme;
   createdAt: string;
   updatedAt: string;
 };
+
+export type PendingJoinRequest = {
+  id: string;
+  ticket: string;
+  expiresAt: string;
+  room: { id: string; code: string; name: string };
+};
+
+export type JoinRoomResult =
+  | { status: "joined"; room: UserRoom }
+  | { status: "pending"; request: PendingJoinRequest };
 
 export function generateRoomCode() {
   let suffix = "";

@@ -49,9 +49,12 @@ export default function ChatMembersSidebar({
   };
 
   const handleJoin = async (code: string) => {
-    const room = await joinRoom(code);
-    onClose?.();
-    router.push(`/chat/${room.code}`);
+    const result = await joinRoom(code);
+    if (result.status === "joined") {
+      onClose?.();
+      router.push(`/chat/${result.room.code}`);
+    }
+    return result;
   };
 
   const filteredRooms = rooms.filter((room) => {
@@ -158,7 +161,10 @@ export default function ChatMembersSidebar({
 
           <Separator className="shrink-0" />
           <div className="grid shrink-0 gap-2 p-3">
-            <Button className="w-full gap-2" onClick={() => setCreateOpen(true)}>
+            <Button
+              className="w-full gap-2"
+              onClick={() => setCreateOpen(true)}
+            >
               <Plus className="h-4 w-4" />
               Create new room
             </Button>

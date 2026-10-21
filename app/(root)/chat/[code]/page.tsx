@@ -5,7 +5,6 @@ import Chat from "@/components/Chat";
 import AblyRoom from "@/components/chat/AblyRoom";
 import RoomHeader from "@/components/chat/RoomHeader";
 import RoomSkeleton from "@/components/chat/RoomSkeleton";
-import AppAblyProvider from "@/providers/AblyProvider";
 import { auth } from "@/lib/auth";
 import { getRoomForMember } from "@/lib/room-service";
 import { parseInviteCode, inviteDestination } from "@/lib/invites";
@@ -41,18 +40,16 @@ async function RoomContent({ params }: RoomPageProps) {
   if (!room) redirect(inviteDestination(normalizedCode));
 
   return (
-    <AppAblyProvider authenticated>
-      <AblyRoom roomName={`qchat:${room.code}`}>
-        <div className="flex min-h-0 w-full flex-1 flex-col">
-          <RoomHeader room={room} members={room.members} />
-          <Chat
-            roomId={room.id}
-            roomCode={room.code}
-            members={room.members}
-            initialTheme={room.theme}
-          />
-        </div>
-      </AblyRoom>
-    </AppAblyProvider>
+    <AblyRoom roomName={`qchat:${room.code}`}>
+      <div className="flex min-h-0 w-full flex-1 flex-col">
+        <RoomHeader room={room} members={room.members} />
+        <Chat
+          roomId={room.id}
+          roomCode={room.code}
+          members={room.members}
+          initialTheme={room.theme}
+        />
+      </div>
+    </AblyRoom>
   );
 }

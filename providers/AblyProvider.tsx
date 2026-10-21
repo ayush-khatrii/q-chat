@@ -7,21 +7,14 @@ import { AblyProvider as RealtimeProvider } from "ably/react";
 import { ChatClient, LogLevel } from "@ably/chat";
 import { ChatClientProvider } from "@ably/chat/react";
 import { authClient } from "@/lib/auth-client";
+import { RoomActivityProvider } from "@/components/room-activity-context";
 
 type AppAblyProviderProps = {
   children: ReactNode;
-  authenticated?: boolean;
 };
 
 // 1. The Main Gatekeeper Provider
-export default function AppAblyProvider({
-  children,
-  authenticated = false,
-}: AppAblyProviderProps) {
-  if (authenticated) {
-    return <AblyConnectedProvider>{children}</AblyConnectedProvider>;
-  }
-
+export default function AppAblyProvider({ children }: AppAblyProviderProps) {
   return <SessionAwareAblyProvider>{children}</SessionAwareAblyProvider>;
 }
 
@@ -40,11 +33,21 @@ function SessionAwareAblyProvider({ children }: { children: ReactNode }) {
   }
 
   // If we have a session, mount the real Ably clients safely
-  return <AblyConnectedProvider>{children}</AblyConnectedProvider>;
+  return (
+    <AblyConnectedProvider userId={session.user.id}>
+      {children}
+    </AblyConnectedProvider>
+  );
 }
 
 // 2. The Clean Realtime Client Initializer
-function AblyConnectedProvider({ children }: { children: ReactNode }) {
+function AblyConnectedProvider({
+  children,
+  userId,
+}: {
+  children: ReactNode;
+  userId: string;
+}) {
   const disposeTimer = useRef<number | null>(null);
   const { realtimeClient, chatClient } = useMemo(() => {
     const realtime = new Ably.Realtime({
@@ -89,7 +92,11 @@ function AblyConnectedProvider({ children }: { children: ReactNode }) {
 
   return (
     <RealtimeProvider client={realtimeClient}>
-      <ChatClientProvider client={chatClient}>{children}</ChatClientProvider>
+      <ChatClientProvider client={chatClient}>
+        <RoomActivityProvider client={realtimeClient} userId={userId}>
+          {children}
+        </RoomActivityProvider>
+      </ChatClientProvider>
     </RealtimeProvider>
   );
 }

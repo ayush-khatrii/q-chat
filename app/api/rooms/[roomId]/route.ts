@@ -2,6 +2,12 @@ import { headers } from "next/headers";
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import prisma from "@/lib/prisma";
+import {
+  createRoomActivity,
+  publishRoomActivity,
+  revokeUserTokens,
+} from "@/lib/join-requests";
+import { sendActivityPush } from "@/lib/activity-push";
 
 async function getAuthenticatedUser() {
   const session = await auth.api.getSession({
@@ -28,19 +34,20 @@ export async function DELETE(
     },
     select: {
       id: true,
+      code: true,
+      name: true,
       ownerId: true,
       roomMembers: {
-        where: {
-          userId: user.id,
-        },
-        select: {
-          id: true,
-        },
+        select: { id: true, userId: true },
       },
     },
   });
 
-  if (!room || (room.ownerId !== user.id && room.roomMembers.length === 0)) {
+  if (
+    !room ||
+    (room.ownerId !== user.id &&
+      !room.roomMembers.some((member) => member.userId === user.id))
+  ) {
     return NextResponse.json({ error: "Room not found" }, { status: 404 });
   }
 
@@ -62,6 +69,21 @@ export async function DELETE(
       }),
     ]);
 
+    const activity = createRoomActivity({
+      type: "room.deleted",
+      room: { id: room.id, code: room.code, name: room.name },
+      actor: {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        image: user.image ?? null,
+      },
+    });
+    const memberIds = room.roomMembers.map((member) => member.userId);
+    await publishRoomActivity(activity, memberIds);
+    await Promise.all(memberIds.map(revokeUserTokens));
+    await sendActivityPush(memberIds, activity);
+
     return NextResponse.json({ action: "deleted" });
   }
 
@@ -71,6 +93,19 @@ export async function DELETE(
       userId: user.id,
     },
   });
+
+  const activity = createRoomActivity({
+    type: "member.left",
+    room: { id: room.id, code: room.code, name: room.name },
+    actor: {
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      image: user.image ?? null,
+    },
+  });
+  await publishRoomActivity(activity, [user.id]);
+  await revokeUserTokens(user.id);
 
   return NextResponse.json({ action: "left" });
 }

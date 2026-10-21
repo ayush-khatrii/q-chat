@@ -3,6 +3,9 @@ const { test } = require("node:test");
 const { createServer } = require("node:http");
 const { build } = require("esbuild");
 const { chromium } = require("@playwright/test");
+const { readFile } = require("node:fs/promises");
+const postcss = require("postcss");
+const tailwind = require("@tailwindcss/postcss");
 
 // Bundle the real composer and attachment UI, replacing only external services.
 // The browser still runs the real upload hook, file picker, dialogs, and fetches.
@@ -51,7 +54,7 @@ async function fixture() {
   const result = await build({
     stdin: {
       contents: `import React from 'react'; import {createRoot} from 'react-dom/client'; import Chat from './components/Chat'; import {TooltipProvider} from './components/ui/tooltip';
-      createRoot(document.getElementById('root')).render(<TooltipProvider><Chat roomId="room" roomCode="CODE" members={[]} initialTheme={{}} /></TooltipProvider>);`,
+      createRoot(document.getElementById('root')).render(<TooltipProvider><div className="flex h-dvh flex-col"><Chat roomId="room" roomCode="CODE" members={[]} initialTheme={{}} /></div></TooltipProvider>);`,
       resolveDir: process.cwd(),
       loader: "tsx",
     },
@@ -77,7 +80,9 @@ async function fixture() {
       },
     ],
   });
+  const css = await postcss([tailwind()]).process(await readFile('app/globals.css', 'utf8'), {from: require('node:path').resolve('app/globals.css')});
   const server = createServer((req, res) => {
+    if (req.url === '/style.css') { res.setHeader('Content-Type','text/css');res.end(css.css);return; }
     if (req.url === "/image.png") {
       res.setHeader("Content-Type", "image/png");
       res.end(
@@ -92,7 +97,7 @@ async function fixture() {
     } else {
       res.setHeader("Content-Type", "text/html");
       res.end(
-        '<!doctype html><html><body><div id="root"></div><script>window.process={env:{}};</script><script src="/bundle.js"></script></body></html>',
+        '<!doctype html><html class="dark"><head><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="/style.css"></head><body><div id="root"></div><script>window.process={env:{}};</script><script src="/bundle.js"></script></body></html>',
       );
     }
   });
@@ -108,7 +113,8 @@ test('browser: edits preserve drafts and metadata; distinct reactions toggle on 
   try {
     await page.goto(url);
     await page.getByText('Original message',{exact:true}).waitFor();
-    const draft = page.getByRole('textbox', { name: 'Type your message' });
+    assert.equal(await page.getByRole('button',{name:'React to message'}).count(),0);
+    assert.equal(await page.locator('[data-slot=bubble-reactions]').count(),0);
     // The composer has a placeholder rather than an accessible name in older versions.
     const composer = page.locator('textarea').first();
     await composer.fill('Unfinished draft');
@@ -126,13 +132,23 @@ test('browser: edits preserve drafts and metadata; distinct reactions toggle on 
     assert.deepEqual(await page.evaluate(()=>window.__params.metadata.attachmentIds),[]);
     assert.equal(await page.evaluate(()=>window.__sends||0),0);
     await page.getByText('· edited',{exact:true}).waitFor();
-    await page.getByRole('button',{name:'React to message',exact:true}).first().click();
-    await page.getByRole('button',{name:'React 👍',exact:true}).click();
+    await page.getByText('Changed message',{exact:true}).click({button:'right'});
+    await page.getByRole('menuitemcheckbox',{name:'React 👍',exact:true}).click();
     await page.getByRole('button',{name:'👍: 1 reaction, including you',exact:true}).waitFor();
-    await page.getByRole('button',{name:'React to message',exact:true}).first().click();
-    await page.getByRole('button',{name:'React ❤️',exact:true}).click();
+    await page.getByText('Changed message',{exact:true}).click({button:'right'});
+    await page.getByRole('menuitemcheckbox',{name:'React ❤️',exact:true}).click();
     await page.getByRole('button',{name:'❤️: 1 reaction, including you',exact:true}).waitFor();
     assert.equal(await page.evaluate(()=>window.__reactionType),'distinct');
+    const bubble = page.locator('[data-slot=bubble]').filter({has:page.getByText('Changed message',{exact:true})});
+    const bubbleBox = await bubble.boundingBox();
+    const badge = bubble.locator('[data-slot=bubble-reactions]');
+    const badgeBox = await badge.boundingBox();
+    assert.ok(badgeBox.y < bubbleBox.y + bubbleBox.height && badgeBox.y + badgeBox.height > bubbleBox.y + bubbleBox.height, 'badge overlaps lower bubble edge');
+    assert.ok(badgeBox.x + badgeBox.width <= bubbleBox.x + bubbleBox.width, 'outgoing badge stays anchored to bubble right');
+    const footerBox = await bubble.locator('..').locator('[data-slot=message-footer]').boundingBox();
+    assert.ok(footerBox.y >= badgeBox.y + badgeBox.height, 'badge does not overlap timestamp');
+    await page.screenshot({path:'/tmp/qchat-reactions-mobile.png'});
+
     await page.getByRole('button',{name:'👍: 1 reaction, including you',exact:true}).click();
     assert.equal(await page.getByRole('button',{name:'👍: 1 reaction, including you',exact:true}).count(),0);
     await page.getByText('Incoming message',{exact:true}).click({button:'right'});
@@ -145,4 +161,35 @@ test('browser: edits preserve drafts and metadata; distinct reactions toggle on 
     assert.equal(await page.getByRole('button',{name:'❤️: 1 reaction, including you',exact:true}).count(),0);
     assert.deepEqual(errors,[]);
   } finally { await browser.close(); await new Promise(resolve=>server.close(resolve)); }
+});
+
+test('browser: touch hold and keyboard open emoji choices with message actions', {timeout:60000}, async()=>{
+  const {server,url}=await fixture();const browser=await chromium.launch({headless:true});
+  const page=await browser.newPage({viewport:{width:390,height:844},isMobile:true,hasTouch:true});
+  try{
+    await page.goto(url);
+    const message=page.locator('[data-slot=bubble-content]').filter({hasText:'Original message'});
+    await message.waitFor();
+    assert.equal(await page.locator('[data-slot=bubble-reactions]').count(),0);
+    await message.tap();
+    assert.equal(await page.getByRole('menu').count(),0, 'normal taps do not open the menu');
+    const rect=await message.boundingBox();
+    const session=await page.context().newCDPSession(page);
+    await session.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x:rect.x+rect.width/2,y:rect.y+rect.height/2}]});
+    await page.getByRole('menu').waitFor();
+    await session.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});
+    await page.getByRole('menuitem',{name:'Copy',exact:true}).waitFor();
+    await page.getByRole('menuitem',{name:'Edit',exact:true}).waitFor();
+    await page.getByRole('menuitem',{name:'Delete',exact:true}).waitFor();
+    assert.equal(await page.getByRole('menuitemcheckbox').count(),6);
+    await page.screenshot({path:'/tmp/qchat-message-menu-mobile.png'});
+    await page.getByRole('menuitemcheckbox',{name:'React ❤️',exact:true}).tap();
+    await page.getByRole('button',{name:'❤️: 1 reaction, including you',exact:true}).waitFor();
+    await message.focus();
+    await page.keyboard.press('Shift+F10');
+    await page.getByRole('menu').waitFor();
+    assert.equal(await page.getByRole('menuitemcheckbox',{name:'React ❤️',exact:true}).getAttribute('aria-checked'),'true');
+    await page.keyboard.press('Escape');
+    assert.equal(await page.getByRole('button',{name:'React to message'}).count(),0);
+  }finally{await browser.close();await new Promise(resolve=>server.close(resolve));}
 });

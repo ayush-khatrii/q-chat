@@ -208,7 +208,13 @@ export function MessageAttachments({
           }
         }}
       >
-        <DialogContent className="max-w-4xl">
+        <DialogContent
+          className="max-w-4xl"
+          // Portals still bubble React events through the message's menu trigger.
+          // Stop that propagation without preventing the browser's native menu.
+          onContextMenu={(event) => event.stopPropagation()}
+          onPointerDown={(event) => event.stopPropagation()}
+        >
           <DialogHeader>
             <DialogTitle className="break-all pr-6">
               {selected?.name}

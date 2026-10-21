@@ -214,6 +214,19 @@ test(
       await page.keyboard.press("Enter");
       await page.getByRole("dialog").waitFor();
       await page.getByRole("img", { name: "photo.png", exact: true }).waitFor();
+      const image = page.getByRole("img", { name: "photo.png", exact: true });
+      const allowsNativeMenu = await image.evaluate(element => {
+        const event = new MouseEvent('contextmenu', { bubbles: true, cancelable: true });
+        element.dispatchEvent(event);
+        return !event.defaultPrevented;
+      });
+      assert.equal(allowsNativeMenu, true, 'preview allows the browser image menu');
+      assert.equal(await page.getByRole('menu').count(), 0, 'preview does not open message actions');
+      await image.dispatchEvent('pointerdown', {pointerType:'touch', pointerId:1, bubbles:true});
+      await page.waitForTimeout(800);
+      await image.dispatchEvent('pointerup', {pointerType:'touch', pointerId:1, bubbles:true});
+      assert.equal(await page.getByRole('menu').count(), 0, 'preview touch hold does not open message actions');
+
       await page
         .getByRole("dialog")
         .waitFor({ state: "hidden", timeout: 8000 });

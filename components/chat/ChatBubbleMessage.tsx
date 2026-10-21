@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { MessageAttachments } from "@/components/chat/MessageAttachments";
 import Link from "next/link";
 import {
@@ -9,7 +9,6 @@ import {
   CheckCheckIcon,
   Copy,
   Pencil,
-  SmilePlus,
   Trash2,
 } from "lucide-react";
 import { useInView } from "react-intersection-observer";
@@ -17,7 +16,7 @@ import { useInView } from "react-intersection-observer";
 import { ChatMessageAction, type Message as AblyMessage } from "@ably/chat";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Bubble, BubbleContent } from "@/components/ui/bubble";
+import { Bubble, BubbleContent, BubbleReactions } from "@/components/ui/bubble";
 import {
   ContextMenu,
   ContextMenuContent,
@@ -103,11 +102,14 @@ export function ChatBubbleMessage({
   onReact,
   reactionPending,
 }: ChatBubbleMessageProps) {
-  const [pickerOpen, setPickerOpen] = useState(false);
   const { ref, inView } = useInView({
     threshold: 0.1,
   });
   const isDeleted = message.action === ChatMessageAction.MessageDelete;
+  const reactions = Object.entries(message.reactions?.distinct ?? {}).filter(
+    ([, summary]) => summary.total > 0,
+  );
+  const hasReactions = !isDeleted && reactions.length > 0;
 
   useEffect(() => {
     if (isMe || isDeleted || !inView || !isPageVisible) return;
@@ -136,6 +138,27 @@ export function ChatBubbleMessage({
           : undefined
       }
       aria-disabled={isDeleted || undefined}
+      tabIndex={isDeleted ? undefined : 0}
+      aria-haspopup={isDeleted ? undefined : "menu"}
+      aria-label={isDeleted ? undefined : `Message from ${senderName}`}
+      onKeyDown={(event) => {
+        if (isDeleted || event.target !== event.currentTarget) return;
+        if (
+          event.key === "ContextMenu" ||
+          (event.shiftKey && event.key === "F10")
+        ) {
+          event.preventDefault();
+          const rect = event.currentTarget.getBoundingClientRect();
+          event.currentTarget.dispatchEvent(
+            new MouseEvent("contextmenu", {
+              bubbles: true,
+              cancelable: true,
+              clientX: rect.left + rect.width / 2,
+              clientY: rect.top + rect.height / 2,
+            }),
+          );
+        }
+      }}
       style={
         isDeleted
           ? undefined
@@ -197,20 +220,51 @@ export function ChatBubbleMessage({
         <Bubble
           variant={isDeleted ? "muted" : isMe ? "default" : "secondary"}
           align={isMe ? "end" : "start"}
+          className={hasReactions ? "mb-3" : undefined}
         >
           {!isDeleted ? (
             <ContextMenu>
               <ContextMenuTrigger asChild>{content}</ContextMenuTrigger>
-              <ContextMenuContent className="w-40">
-                <ContextMenuItem onClick={() => onCopy(message)}>
-                  <Copy />
-                  Copy
-                </ContextMenuItem>
-                <ContextMenuItem onClick={() => setPickerOpen(true)}>
-                  <SmilePlus /> React
-                </ContextMenuItem>
+              <ContextMenuContent className="w-64 max-w-[calc(100vw-2rem)] rounded-2xl p-2">
+                <div
+                  role="group"
+                  aria-label="Choose a reaction"
+                  className="flex justify-between gap-1 pb-1"
+                >
+                  {REACTIONS.map((emoji) => {
+                    const selected = Boolean(
+                      currentUserId &&
+                      message.reactions?.distinct[emoji]?.clientIds.includes(
+                        currentUserId,
+                      ),
+                    );
+                    return (
+                      <ContextMenuItem
+                        key={emoji}
+                        role="menuitemcheckbox"
+                        aria-checked={selected}
+                        aria-label={`React ${emoji}`}
+                        textValue={`React ${emoji}`}
+                        disabled={
+                          !currentUserId ||
+                          reactionPending.has(`${message.serial}:${emoji}`)
+                        }
+                        className={`size-9 justify-center rounded-full p-0 text-xl ${selected ? "bg-accent" : ""}`}
+                        onSelect={() => onReact(message, emoji)}
+                      >
+                        {emoji}
+                      </ContextMenuItem>
+                    );
+                  })}
+                </div>
+                <ContextMenuSeparator />
+                {message.text && (
+                  <ContextMenuItem onSelect={() => onCopy(message)}>
+                    <Copy /> Copy
+                  </ContextMenuItem>
+                )}
                 {isMe && message.text && (
-                  <ContextMenuItem onClick={() => onEdit(message)}>
+                  <ContextMenuItem onSelect={() => onEdit(message)}>
                     <Pencil />
                     Edit
                   </ContextMenuItem>
@@ -220,7 +274,7 @@ export function ChatBubbleMessage({
                     <ContextMenuSeparator />
                     <ContextMenuItem
                       variant="destructive"
-                      onClick={() => onDelete(message)}
+                      onSelect={() => onDelete(message)}
                     >
                       <Trash2 />
                       Delete
@@ -232,16 +286,13 @@ export function ChatBubbleMessage({
           ) : (
             content
           )}
-        </Bubble>
-
-        {!isDeleted && (
-          <div
-            className="flex max-w-full flex-wrap items-center gap-1"
-            aria-label="Message reactions"
-          >
-            {Object.entries(message.reactions?.distinct ?? {})
-              .filter(([, summary]) => summary.total > 0)
-              .map(([emoji, summary]) => {
+          {hasReactions && (
+            <BubbleReactions
+              align={isMe ? "end" : "start"}
+              className="w-max max-w-[min(16rem,70vw)] translate-y-1/2 gap-0.5 bg-secondary shadow-sm ring-background"
+              aria-label="Message reactions"
+            >
+              {reactions.map(([emoji, summary]) => {
                 const selected = Boolean(
                   currentUserId && summary.clientIds.includes(currentUserId),
                 );
@@ -249,70 +300,29 @@ export function ChatBubbleMessage({
                   <Button
                     key={emoji}
                     type="button"
-                    variant={selected ? "secondary" : "outline"}
-                    size="sm"
+                    variant="ghost"
                     aria-label={`${emoji}: ${summary.total} reaction${summary.total === 1 ? "" : "s"}${selected ? ", including you" : ""}`}
                     aria-pressed={selected}
                     disabled={
                       !currentUserId ||
                       reactionPending.has(`${message.serial}:${emoji}`)
                     }
-                    className={selected ? "border-primary/50" : ""}
+                    className="h-6 min-w-6 gap-1 rounded-full px-1.5 py-0 text-sm"
                     onClick={() => onReact(message, emoji)}
                   >
-                    {emoji} {summary.total}
+                    <span>{emoji}</span>
+                    {summary.total > 1 && (
+                      <span className="text-[0.625rem] text-muted-foreground">
+                        {summary.total}
+                      </span>
+                    )}
                   </Button>
                 );
               })}
-            <Button
-              type="button"
-              size="icon-sm"
-              variant="ghost"
-              aria-label="React to message"
-              aria-expanded={pickerOpen}
-              disabled={!currentUserId}
-              onClick={() => setPickerOpen((open) => !open)}
-            >
-              <SmilePlus className="size-3.5" />
-            </Button>
-            {pickerOpen && (
-              <div
-                role="group"
-                aria-label="Choose a reaction"
-                className="flex flex-wrap gap-1 rounded-md border bg-popover p-1"
-                onKeyDown={(event) => {
-                  if (event.key === "Escape") setPickerOpen(false);
-                }}
-              >
-                {REACTIONS.map((emoji) => (
-                  <Button
-                    key={emoji}
-                    type="button"
-                    variant="ghost"
-                    size="icon-sm"
-                    aria-label={`React ${emoji}`}
-                    aria-pressed={Boolean(
-                      currentUserId &&
-                      message.reactions?.distinct[emoji]?.clientIds.includes(
-                        currentUserId,
-                      ),
-                    )}
-                    disabled={
-                      !currentUserId ||
-                      reactionPending.has(`${message.serial}:${emoji}`)
-                    }
-                    onClick={() => {
-                      onReact(message, emoji);
-                      setPickerOpen(false);
-                    }}
-                  >
-                    {emoji}
-                  </Button>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
+            </BubbleReactions>
+          )}
+        </Bubble>
+
         <MessageFooter className="gap-1">
           <time dateTime={message.timestamp.toISOString()}>
             {formatMessageTime(message.timestamp)}

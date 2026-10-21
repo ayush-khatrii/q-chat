@@ -787,15 +787,23 @@ export default function Chat({
           )}
 
           {loadingHistory && (
-            <div className="flex justify-center py-2">
-              <span
-                role="status"
-                className="rounded-full bg-muted px-3 py-1 text-xs text-muted-foreground"
-              >
-                {historyLoaded
-                  ? "Loading older messages…"
-                  : "Loading messages…"}
-              </span>
+            <div className="space-y-3 py-2" role="status" aria-live="polite">
+              {historyLoaded ? (
+                <div className="flex justify-center">
+                  <div className="h-7 w-24 animate-pulse rounded-full bg-muted/80" />
+                </div>
+              ) : (
+                Array.from({ length: 3 }, (_, index) => (
+                  <div
+                    key={`history-skeleton-${index}`}
+                    className={`flex gap-3 ${
+                      index % 2 === 0 ? "justify-start" : "justify-end"
+                    }`}
+                  >
+                    <div className="h-10 w-28 animate-pulse rounded-2xl bg-muted/80" />
+                  </div>
+                ))
+              )}
             </div>
           )}
 

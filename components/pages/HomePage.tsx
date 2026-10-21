@@ -2,7 +2,7 @@
 
 import { InstallApp } from "@/components/pwa/InstallApp";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { MessageCircle, ArrowRight, MessageSquare } from "lucide-react";
@@ -41,6 +41,10 @@ export default function HomePage() {
   const router = useRouter();
   const { data: session } = authClient.useSession();
   const [signingIn, setSigningIn] = useState(false);
+
+  useEffect(() => {
+    router.prefetch("/chat");
+  }, [router]);
   const [signInError, setSignInError] = useState<string | null>(null);
   const [createRoomOpen, setCreateRoomOpen] = useState(false);
   const [isCreatingRoom, setIsCreatingRoom] = useState(false);
@@ -150,7 +154,7 @@ export default function HomePage() {
           ) : (
             <>
               <Button asChild size="lg" className="h-12 px-8 text-base">
-                <Link href="/chat">
+                <Link href="/chat" prefetch>
                   <MessageSquare className="mr-2 h-4 w-4" />
                   GO TO CHAT
                 </Link>

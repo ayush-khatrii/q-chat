@@ -86,6 +86,7 @@ export default function UserProfile({ userId }: { userId: string }) {
       try {
         const response = await fetch(`/api/users/${userId}`, {
           credentials: "include",
+          cache: "force-cache",
         });
 
         const payload = (await response.json().catch(() => null)) as
@@ -247,7 +248,12 @@ export default function UserProfile({ userId }: { userId: string }) {
       ) : (
         <div className="mb-8 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {sharedRooms.map((room) => (
-            <Link key={room.id} href={`/chat/${room.code}`}>
+            <Link
+              key={room.id}
+              href={`/chat/${room.code}`}
+              prefetch
+              onMouseEnter={() => router.prefetch(`/chat/${room.code}`)}
+            >
               <Card className="h-full transition-colors hover:border-primary/50 hover:bg-accent/40">
                 <CardHeader>
                   <CardTitle className="truncate">{room.name}</CardTitle>

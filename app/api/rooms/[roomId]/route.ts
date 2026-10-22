@@ -8,6 +8,8 @@ import {
   revokeUserTokens,
 } from "@/lib/join-requests";
 import { sendActivityPush } from "@/lib/activity-push";
+import { updateRoomSchema } from "@/lib/rooms";
+import { canEditRoom, effectiveRoomRole } from "@/lib/permissions";
 
 async function getAuthenticatedUser() {
   const session = await auth.api.getSession({
@@ -15,6 +17,76 @@ async function getAuthenticatedUser() {
   });
 
   return session?.user ?? null;
+}
+
+function isUniqueConstraintError(error: unknown) {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    error.code === "P2002"
+  );
+}
+
+export async function PATCH(
+  request: Request,
+  context: { params: Promise<{ roomId: string }> },
+) {
+  const user = await getAuthenticatedUser();
+  if (!user)
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  const { roomId } = await context.params;
+  const parsed = updateRoomSchema.safeParse(
+    await request.json().catch(() => null),
+  );
+  if (!parsed.success) {
+    return NextResponse.json(
+      { error: parsed.error.issues[0]?.message ?? "Invalid room settings." },
+      { status: 400 },
+    );
+  }
+
+  const room = await prisma.room.findUnique({
+    where: { id: roomId },
+    select: {
+      ownerId: true,
+      roomMembers: {
+        where: { userId: user.id },
+        select: { role: true },
+      },
+    },
+  });
+  const membership = room?.roomMembers[0];
+  if (!room || !membership) {
+    return NextResponse.json({ error: "Room not found" }, { status: 404 });
+  }
+  const role = effectiveRoomRole(room.ownerId, user.id, membership.role);
+  if (!canEditRoom(role)) {
+    return NextResponse.json(
+      { error: "Only room admins can edit room settings." },
+      { status: 403 },
+    );
+  }
+
+  try {
+    const updatedRoom = await prisma.room.update({
+      where: { id: roomId },
+      data: { name: parsed.data.name, code: parsed.data.code },
+      select: { id: true, name: true, code: true, updatedAt: true },
+    });
+    return NextResponse.json({
+      room: { ...updatedRoom, updatedAt: updatedRoom.updatedAt.toISOString() },
+    });
+  } catch (error) {
+    if (isUniqueConstraintError(error)) {
+      return NextResponse.json(
+        { error: "That room code is already taken. Try another one." },
+        { status: 409 },
+      );
+    }
+    throw error;
+  }
 }
 
 export async function DELETE(

@@ -7,6 +7,7 @@ const {
   canChangeRole,
   canRemoveMember,
   canDeleteRoom,
+  canEditRoom,
 } = require("../lib/permissions.ts");
 
 test("room creator is always the protected super admin", () => {
@@ -45,4 +46,7 @@ test("admin and super admin permissions follow the room hierarchy", () => {
   assert.equal(canRemoveMember(ROOM_ROLES.SUPER_ADMIN, ROOM_ROLES.ADMIN), true);
   assert.equal(canDeleteRoom(ROOM_ROLES.ADMIN), false);
   assert.equal(canDeleteRoom(ROOM_ROLES.SUPER_ADMIN), true);
+  assert.equal(canEditRoom(ROOM_ROLES.MEMBER), false);
+  assert.equal(canEditRoom(ROOM_ROLES.ADMIN), true);
+  assert.equal(canEditRoom(ROOM_ROLES.SUPER_ADMIN), true);
 });

@@ -21,6 +21,7 @@ import {
   MessagesSquare,
   Moon,
   Palette,
+  Pencil,
   Plus,
   Settings,
   Search,
@@ -62,12 +63,14 @@ import { useSidebar } from "@/components/sidebar-context";
 import { useRooms } from "@/hooks/use-rooms";
 import { authClient } from "@/lib/auth-client";
 import type { UserRoom, UserRoomMember } from "@/lib/rooms";
+import { MAX_CUSTOM_ROOM_CODE_LENGTH } from "@/lib/rooms";
 
 import { InstallApp } from "@/components/pwa/InstallApp";
 import NotificationCenter from "@/components/NotificationCenter";
 import { useRoomActivity } from "@/components/room-activity-context";
 import {
   canChangeRole,
+  canEditRoom,
   canRemoveMember,
   type PersistedRoomRole,
 } from "@/lib/permissions";
@@ -120,6 +123,13 @@ export default function RoomHeader({ room, members }: RoomHeaderProps) {
   const [createRoomOpen, setCreateRoomOpen] = useState(false);
   const [joinRoomOpen, setJoinRoomOpen] = useState(false);
   const [roomActionOpen, setRoomActionOpen] = useState(false);
+  const [roomSettingsOpen, setRoomSettingsOpen] = useState(false);
+  const [roomName, setRoomName] = useState(room.name);
+  const [roomCode, setRoomCode] = useState(room.code.replace(/^QC-/, ""));
+  const [isSavingRoom, setIsSavingRoom] = useState(false);
+  const [roomSettingsError, setRoomSettingsError] = useState<string | null>(
+    null,
+  );
   const [copied, setCopied] = useState(false);
   const [shareStatus, setShareStatus] = useState<"idle" | "shared" | "copied">(
     "idle",
@@ -141,7 +151,6 @@ export default function RoomHeader({ room, members }: RoomHeaderProps) {
 
   const currentRoom = room;
   const hasActiveRoom = true;
-  const isResolvingRoom = false;
   const roleOrder = { SUPER_ADMIN: 0, ADMIN: 1, MEMBER: 2 } as const;
   const membersToRender = [...members]
     .filter((member) => {
@@ -158,6 +167,7 @@ export default function RoomHeader({ room, members }: RoomHeaderProps) {
   const memberCount = currentRoom.memberCount;
   const displayCode = currentRoom.code;
   const displayName = currentRoom.name;
+  const editableRoom = canEditRoom(currentRoom.currentUserRole);
 
   useEffect(() => {
     setMounted(true);
@@ -244,6 +254,44 @@ export default function RoomHeader({ room, members }: RoomHeaderProps) {
       router.refresh();
     } finally {
       setIsRemovingRoom(false);
+    }
+  };
+
+  const handleSaveRoom = async () => {
+    setIsSavingRoom(true);
+    setRoomSettingsError(null);
+    try {
+      const response = await fetch(`/api/rooms/${currentRoom.id}`, {
+        method: "PATCH",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: roomName, code: roomCode }),
+      });
+      const payload = (await response.json().catch(() => null)) as {
+        room?: { name: string; code: string };
+        error?: string;
+      } | null;
+      if (!response.ok || !payload?.room) {
+        throw new Error(payload?.error ?? "Unable to update room settings.");
+      }
+
+      const codeChanged = payload.room.code !== currentRoom.code;
+      setRoomSettingsOpen(false);
+      setMenuOpen(false);
+      setRoomNotice("Room settings updated.");
+      window.dispatchEvent(new Event("qchat:membership-changed"));
+      if (codeChanged) {
+        router.replace(`/chat/${encodeURIComponent(payload.room.code)}`);
+      }
+      router.refresh();
+    } catch (error) {
+      setRoomSettingsError(
+        error instanceof Error
+          ? error.message
+          : "Unable to update room settings.",
+      );
+    } finally {
+      setIsSavingRoom(false);
     }
   };
 
@@ -368,13 +416,6 @@ export default function RoomHeader({ room, members }: RoomHeaderProps) {
                 </Button>
               ) : null}
             </div>
-            <p
-              className={`truncate font-mono text-[0.625rem] leading-tight text-muted-foreground sm:text-xs ${
-                isResolvingRoom ? "animate-pulse" : ""
-              }`}
-            >
-              {displayCode}
-            </p>
           </div>
         </div>
 
@@ -406,7 +447,7 @@ export default function RoomHeader({ room, members }: RoomHeaderProps) {
                 </p>
                 <p className="truncate font-mono text-[0.6875rem] text-muted-foreground">
                   {hasActiveRoom
-                    ? `${displayCode} · ${memberCount} members`
+                    ? `${memberCount} members`
                     : "Create a room to save a private QC code"}
                 </p>
               </div>
@@ -642,6 +683,38 @@ export default function RoomHeader({ room, members }: RoomHeaderProps) {
                 ) : null}
 
                 <MenuSection icon={Folder} title="Workspace">
+                  <div className="mx-1 mb-1 flex items-center gap-2 rounded-xl border bg-muted/30 px-3 py-2.5">
+                    <div className="min-w-0 flex-1">
+                      <p className="text-[0.625rem] font-medium text-muted-foreground">
+                        Room code
+                      </p>
+                      <p className="truncate font-mono text-xs font-semibold">
+                        {displayCode}
+                      </p>
+                    </div>
+                    <Button
+                      type="button"
+                      size="icon-sm"
+                      variant="ghost"
+                      aria-label="Copy room code"
+                      onClick={() => void copyRoom()}
+                    >
+                      {copied ? <Check /> : <Copy />}
+                    </Button>
+                  </div>
+                  {editableRoom ? (
+                    <MenuButton
+                      icon={Pencil}
+                      label="Edit room settings"
+                      onClick={() => {
+                        setRoomName(currentRoom.name);
+                        setRoomCode(currentRoom.code.replace(/^QC-/, ""));
+                        setRoomSettingsError(null);
+                        setMenuOpen(false);
+                        setRoomSettingsOpen(true);
+                      }}
+                    />
+                  ) : null}
                   <MenuButton
                     icon={Plus}
                     label="Create new room"
@@ -652,11 +725,6 @@ export default function RoomHeader({ room, members }: RoomHeaderProps) {
                   />
                   {hasActiveRoom ? (
                     <>
-                      <MenuButton
-                        icon={copied ? Check : Copy}
-                        label={copied ? "Copied!" : "Copy room code"}
-                        onClick={copyRoom}
-                      />
                       <MenuButton
                         icon={shareStatus === "idle" ? Share2 : Check}
                         label={
@@ -778,6 +846,93 @@ export default function RoomHeader({ room, members }: RoomHeaderProps) {
         onOpenChange={setRoomActionOpen}
         onConfirm={handleRemoveRoom}
       />
+      <Dialog
+        open={roomSettingsOpen}
+        onOpenChange={(open) => {
+          if (!isSavingRoom) setRoomSettingsOpen(open);
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Edit room settings</DialogTitle>
+            <DialogDescription>
+              Change how this room appears and the code people use to join it.
+              Admins and the super admin can update these details.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-1.5">
+              <label htmlFor="edit-room-name" className="text-xs font-medium">
+                Room name
+              </label>
+              <Input
+                id="edit-room-name"
+                value={roomName}
+                maxLength={50}
+                disabled={isSavingRoom}
+                onChange={(event) => setRoomName(event.target.value)}
+                placeholder="Room name"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label htmlFor="edit-room-code" className="text-xs font-medium">
+                Room code
+              </label>
+              <div className="flex items-center gap-2">
+                <div className="flex h-9 shrink-0 items-center rounded-md border border-input bg-muted px-2 font-mono text-xs text-muted-foreground">
+                  QC-
+                </div>
+                <Input
+                  id="edit-room-code"
+                  value={roomCode}
+                  disabled={isSavingRoom}
+                  maxLength={MAX_CUSTOM_ROOM_CODE_LENGTH - 3}
+                  onChange={(event) =>
+                    setRoomCode(
+                      event.target.value
+                        .replace(/^QC-/i, "")
+                        .replace(/[^A-Za-z0-9-]/g, "")
+                        .toUpperCase(),
+                    )
+                  }
+                  className="font-mono"
+                  placeholder="TEAM-01"
+                />
+              </div>
+              <p className="text-[0.6875rem] text-muted-foreground">
+                Letters, numbers, and hyphens. Changing the code updates the
+                room link.
+              </p>
+            </div>
+            {roomSettingsError ? (
+              <p className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">
+                {roomSettingsError}
+              </p>
+            ) : null}
+          </div>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={isSavingRoom}
+              onClick={() => setRoomSettingsOpen(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              disabled={
+                isSavingRoom ||
+                roomName.trim().length < 3 ||
+                roomCode.trim().length === 0
+              }
+              onClick={() => void handleSaveRoom()}
+            >
+              {isSavingRoom ? "Saving..." : "Save changes"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       <Dialog
         open={memberToRemove !== null}
         onOpenChange={(open) => {

@@ -127,6 +127,30 @@ export const createRoomSchema = z
     }
   });
 
+export const updateRoomSchema = z.object({
+  name: z
+    .string()
+    .trim()
+    .min(3, "Room name must be at least 3 characters long.")
+    .max(50, "Room name must be 50 characters or less."),
+  code: z
+    .string()
+    .trim()
+    .min(1, "Enter a room code.")
+    .max(
+      MAX_CUSTOM_ROOM_CODE_LENGTH,
+      `Room code must be ${MAX_CUSTOM_ROOM_CODE_LENGTH} characters or less including QC-.`,
+    )
+    .regex(
+      /^[A-Za-z0-9-]+$/,
+      "Room code can only include letters, numbers, and hyphens.",
+    )
+    .transform((code) => normalizeCustomRoomCode(code) ?? "")
+    .refine((code) => code.length <= MAX_CUSTOM_ROOM_CODE_LENGTH, {
+      message: `Room code must be ${MAX_CUSTOM_ROOM_CODE_LENGTH} characters or less including QC-.`,
+    }),
+});
+
 export const joinRoomSchema = z.object({
   code: z
     .string()

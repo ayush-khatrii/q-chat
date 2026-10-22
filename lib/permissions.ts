@@ -48,3 +48,7 @@ export function canChangeRole(
 export function canDeleteRoom(role: RoomRole) {
   return role === ROOM_ROLES.SUPER_ADMIN;
 }
+
+export function canEditRoom(role: RoomRole) {
+  return role === ROOM_ROLES.SUPER_ADMIN || role === ROOM_ROLES.ADMIN;
+}

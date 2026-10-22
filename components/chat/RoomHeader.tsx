@@ -43,7 +43,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { ScrollArea } from "@/components/ui/scroll-area";
+import { Collapsible } from "radix-ui";
 import { Input } from "@/components/ui/input";
 import {
   DropdownMenu,
@@ -52,7 +52,13 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetTitle,
+  SheetTrigger,
+} from "@/components/ui/sheet";
 import { Switch } from "@/components/ui/switch";
 import GoogleOneTap from "@/components/auth/GoogleOneTap";
 import UserDropdown from "@/components/auth/UserDropdown";
@@ -435,29 +441,32 @@ export default function RoomHeader({ room, members }: RoomHeaderProps) {
           </SheetTrigger>
           <SheetContent
             side="right"
-            className="flex h-full w-[min(94vw,400px)] flex-col border-l bg-background/98 p-0 backdrop-blur-xl"
+            className="min-w-0 max-w-full overflow-hidden border-l bg-background p-0 data-[side=right]:h-dvh data-[side=right]:w-[min(100vw,400px)] data-[side=right]:sm:max-w-[400px] [&>[data-slot=sheet-close]]:size-11"
           >
-            <div className="flex shrink-0 items-center gap-3 border-b bg-gradient-to-br from-primary/10 via-background to-background px-5 py-5">
+            <div className="flex shrink-0 items-center gap-3 border-b bg-gradient-to-br from-primary/10 via-background to-background pl-4 pr-16 pb-4 pt-[max(1rem,env(safe-area-inset-top))]">
               <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-sm">
                 <MessagesSquare className="size-4" />
               </div>
               <div className="min-w-0 flex-1">
-                <p className="truncate text-base font-semibold leading-tight tracking-tight">
+                <SheetTitle className="truncate text-base font-semibold leading-tight tracking-tight">
                   {displayName}
-                </p>
-                <p className="truncate font-mono text-[0.6875rem] text-muted-foreground">
+                </SheetTitle>
+                <SheetDescription className="truncate text-xs text-muted-foreground">
                   {hasActiveRoom
                     ? `${memberCount} members`
                     : "Create a room to save a private QC code"}
-                </p>
+                </SheetDescription>
               </div>
             </div>
 
-            <ScrollArea className="min-h-0 flex-1">
-              <div className="space-y-5 p-4">
+            <div
+              data-slot="room-menu-scroll"
+              className="min-h-0 min-w-0 flex-1 overflow-y-auto overscroll-contain"
+            >
+              <div className="min-w-0 space-y-3 px-3 pt-3 pb-[max(1rem,env(safe-area-inset-bottom))] sm:px-4">
                 <div className="rounded-2xl border bg-card p-2.5 text-card-foreground shadow-sm">
-                  <div className="flex items-center justify-between gap-3 px-2 py-1.5">
-                    <div>
+                  <div className="flex min-w-0 items-center justify-between gap-2 px-2 py-1.5">
+                    <div className="min-w-0">
                       <p className="text-xs font-semibold">Members</p>
                       <p className="text-[0.625rem] text-muted-foreground">
                         Manage current room membership
@@ -474,7 +483,7 @@ export default function RoomHeader({ room, members }: RoomHeaderProps) {
                       className="h-8 pl-8 text-xs"
                     />
                   </div>
-                  <ScrollArea className="max-h-[min(40vh,20rem)]">
+                  <div className="max-h-[min(40dvh,20rem)] overflow-y-auto overscroll-contain">
                     <div className="space-y-1 px-1 pb-1">
                       {membersToRender.map((member) => {
                         const removable = canRemoveMember(
@@ -494,9 +503,9 @@ export default function RoomHeader({ room, members }: RoomHeaderProps) {
                         return (
                           <div
                             key={member.id}
-                            className="flex items-center gap-2 rounded-xl px-2 py-2 hover:bg-muted/50"
+                            className="flex min-w-0 items-center gap-2 rounded-xl px-2 py-2 hover:bg-muted/50"
                           >
-                            <Avatar className="size-8">
+                            <Avatar className="size-8 shrink-0">
                               <AvatarImage
                                 src={member.user.image ?? undefined}
                                 alt={getDisplayName(member.user)}
@@ -514,6 +523,7 @@ export default function RoomHeader({ room, members }: RoomHeaderProps) {
                               </p>
                             </div>
                             <Badge
+                              className="shrink-0"
                               variant={
                                 member.role === "SUPER_ADMIN"
                                   ? "default"
@@ -534,6 +544,7 @@ export default function RoomHeader({ room, members }: RoomHeaderProps) {
                                   type="button"
                                   size="icon-sm"
                                   variant="ghost"
+                                  className="size-11 shrink-0"
                                   aria-label={`Actions for ${getDisplayName(member.user)}`}
                                   disabled={
                                     changingMemberId !== null ||
@@ -591,7 +602,7 @@ export default function RoomHeader({ room, members }: RoomHeaderProps) {
                         </p>
                       ) : null}
                     </div>
-                  </ScrollArea>
+                  </div>
                 </div>
 
                 {activity?.pendingRequests.some(
@@ -608,7 +619,7 @@ export default function RoomHeader({ room, members }: RoomHeaderProps) {
                         }
                       </Badge>
                     </div>
-                    <ScrollArea className="max-h-48">
+                    <div className="max-h-48 overflow-y-auto overscroll-contain">
                       <div className="space-y-2 p-1">
                         {activity.pendingRequests
                           .filter(
@@ -620,7 +631,7 @@ export default function RoomHeader({ room, members }: RoomHeaderProps) {
                               className="rounded-xl border p-2.5"
                             >
                               <div className="flex items-center gap-2">
-                                <Avatar className="size-8">
+                                <Avatar className="size-8 shrink-0">
                                   <AvatarImage
                                     src={request.actor.image ?? undefined}
                                   />
@@ -678,7 +689,7 @@ export default function RoomHeader({ room, members }: RoomHeaderProps) {
                             </div>
                           ))}
                       </div>
-                    </ScrollArea>
+                    </div>
                   </div>
                 ) : null}
 
@@ -696,6 +707,7 @@ export default function RoomHeader({ room, members }: RoomHeaderProps) {
                       type="button"
                       size="icon-sm"
                       variant="ghost"
+                      className="size-11 shrink-0"
                       aria-label="Copy room code"
                       onClick={() => void copyRoom()}
                     >
@@ -793,7 +805,7 @@ export default function RoomHeader({ room, members }: RoomHeaderProps) {
                   />
                 </MenuSection>
 
-                <MenuSection icon={Info} title="About">
+                <MenuSection icon={Info} title="About" defaultOpen={false}>
                   <MenuLink icon={Info} label="About QChat" href="/about" />
                   <MenuLink
                     icon={ShieldCheck}
@@ -807,7 +819,7 @@ export default function RoomHeader({ room, members }: RoomHeaderProps) {
                   />
                 </MenuSection>
 
-                <MenuSection icon={Code2} title="Developer">
+                <MenuSection icon={Code2} title="Developer" defaultOpen={false}>
                   <MenuLink
                     icon={Globe}
                     label="Built by Ayush"
@@ -822,7 +834,7 @@ export default function RoomHeader({ room, members }: RoomHeaderProps) {
                   />
                 </MenuSection>
               </div>
-            </ScrollArea>
+            </div>
           </SheetContent>
         </Sheet>
       </div>
@@ -1047,23 +1059,29 @@ function MenuSection({
   icon: Icon,
   title,
   children,
+  defaultOpen = true,
 }: {
   icon: LucideIcon;
   title: string;
   children: ReactNode;
+  defaultOpen?: boolean;
 }) {
   return (
-    <section>
-      <div className="mb-2 flex items-center gap-2 px-1.5 text-[0.625rem] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
-        <span className="flex size-6 items-center justify-center rounded-lg bg-primary/10 text-primary">
-          <Icon className="size-3" />
+    <Collapsible.Root
+      defaultOpen={defaultOpen}
+      className="min-w-0 rounded-2xl border bg-card text-card-foreground"
+    >
+      <Collapsible.Trigger className="group flex min-h-11 w-full items-center gap-2 rounded-2xl px-3 py-2 text-left text-xs font-semibold text-muted-foreground transition-colors hover:bg-accent/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+        <span className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+          <Icon className="size-3.5" />
         </span>
-        <span>{title}</span>
-      </div>
-      <div className="space-y-1 rounded-2xl border bg-card p-1.5 shadow-sm">
+        <span className="min-w-0 flex-1">{title}</span>
+        <ChevronRight className="size-3.5 shrink-0 transition-transform group-data-[state=open]:rotate-90" />
+      </Collapsible.Trigger>
+      <Collapsible.Content className="min-w-0 space-y-0.5 border-t p-1.5">
         {children}
-      </div>
-    </section>
+      </Collapsible.Content>
+    </Collapsible.Root>
   );
 }
 
@@ -1083,22 +1101,22 @@ function MenuButton({
       type="button"
       className={
         tone === "destructive"
-          ? "group flex min-h-10 w-full items-center gap-3 rounded-xl px-3 text-left text-xs font-medium text-destructive transition-colors hover:bg-destructive/10"
-          : "group flex min-h-10 w-full items-center gap-3 rounded-xl px-3 text-left text-xs font-medium transition-colors hover:bg-accent hover:text-accent-foreground"
+          ? "group flex min-h-11 min-w-0 w-full items-center gap-3 rounded-xl px-3 py-2 text-left text-xs font-medium text-destructive transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring hover:bg-destructive/10"
+          : "group flex min-h-11 min-w-0 w-full items-center gap-3 rounded-xl px-3 py-2 text-left text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring hover:bg-accent hover:text-accent-foreground"
       }
       onClick={onClick}
     >
       <span
         className={
           tone === "destructive"
-            ? "flex size-7 items-center justify-center rounded-lg bg-destructive/10"
-            : "flex size-7 items-center justify-center rounded-lg bg-muted text-muted-foreground group-hover:bg-background"
+            ? "flex size-7 shrink-0 items-center justify-center rounded-lg bg-destructive/10"
+            : "flex size-7 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground group-hover:bg-background"
         }
       >
         <Icon className="size-3.5" />
       </span>
-      <span className="min-w-0 flex-1 truncate">{label}</span>
-      <ChevronRight className="size-3 text-muted-foreground/60 transition-transform group-hover:translate-x-0.5" />
+      <span className="min-w-0 flex-1 break-words">{label}</span>
+      <ChevronRight className="size-3 shrink-0 text-muted-foreground/60 transition-transform group-hover:translate-x-0.5" />
     </button>
   );
 }
@@ -1119,13 +1137,13 @@ function MenuLink({
       href={href}
       target={external ? "_blank" : undefined}
       rel={external ? "noopener noreferrer" : undefined}
-      className="group flex min-h-10 w-full items-center gap-3 rounded-xl px-3 text-xs font-medium transition-colors hover:bg-accent hover:text-accent-foreground"
+      className="group flex min-h-11 min-w-0 w-full items-center gap-3 rounded-xl px-3 py-2 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring hover:bg-accent hover:text-accent-foreground"
     >
-      <span className="flex size-7 items-center justify-center rounded-lg bg-muted text-muted-foreground group-hover:bg-background">
+      <span className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground group-hover:bg-background">
         <Icon className="size-3.5" />
       </span>
-      <span className="min-w-0 flex-1 truncate">{label}</span>
-      <ChevronRight className="size-3 text-muted-foreground/60 transition-transform group-hover:translate-x-0.5" />
+      <span className="min-w-0 flex-1 break-words">{label}</span>
+      <ChevronRight className="size-3 shrink-0 text-muted-foreground/60 transition-transform group-hover:translate-x-0.5" />
     </Link>
   );
 }
@@ -1142,11 +1160,11 @@ function ToggleRow({
   onCheckedChange: (checked: boolean) => void;
 }) {
   return (
-    <div className="flex min-h-10 w-full items-center gap-3 rounded-xl px-3 text-xs font-medium hover:bg-accent/50">
-      <span className="flex size-7 items-center justify-center rounded-lg bg-muted text-muted-foreground">
+    <div className="flex min-h-11 min-w-0 w-full items-center gap-3 rounded-xl px-3 py-2 text-xs font-medium hover:bg-accent/50">
+      <span className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground">
         <Icon className="size-3.5" />
       </span>
-      <span className="min-w-0 flex-1 truncate">{label}</span>
+      <span className="min-w-0 flex-1 break-words">{label}</span>
       <Switch
         size="sm"
         checked={checked}

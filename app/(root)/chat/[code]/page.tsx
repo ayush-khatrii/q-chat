@@ -40,16 +40,16 @@ async function RoomContent({ params }: RoomPageProps) {
   if (!room) redirect(inviteDestination(normalizedCode));
 
   return (
-    <AblyRoom roomName={`qchat:${room.code}`}>
-      <div className="flex min-h-0 w-full flex-1 flex-col">
-        <RoomHeader room={room} members={room.members} />
+    <div className="flex min-h-0 w-full flex-1 flex-col">
+      <RoomHeader room={room} members={room.members} />
+      <AblyRoom roomName={`qchat:${room.code}`}>
         <Chat
           roomId={room.id}
           roomCode={room.code}
           members={room.members}
           initialTheme={room.theme}
         />
-      </div>
-    </AblyRoom>
+      </AblyRoom>
+    </div>
   );
 }

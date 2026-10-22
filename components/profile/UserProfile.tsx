@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { useQuery } from "@tanstack/react-query";
 import { ArrowLeft, CalendarDays, DoorOpen, UserRound } from "lucide-react";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -15,6 +15,8 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import ProfileSkeleton from "@/components/profile/ProfileSkeleton";
+import type { UserProfileData } from "@/lib/profile-data";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -24,20 +26,6 @@ type SharedRoom = {
   name: string;
   ownerId: string;
   joinedAt: string;
-};
-
-type UserProfileData = {
-  user: {
-    id: string;
-    name: string | null;
-    email: string;
-    image: string | null;
-    createdAt: string;
-  };
-  isMe: boolean;
-  sharedRooms: SharedRoom[];
-  createdRoomsCount: number;
-  joinedRoomsCount: number;
 };
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -54,9 +42,7 @@ function getInitials(name: string) {
   );
 }
 
-function getDisplayName(
-  user: UserProfileData["user"],
-) {
+function getDisplayName(user: UserProfileData["user"]) {
   return user.name ?? user.email;
 }
 
@@ -70,77 +56,47 @@ function formatDate(value: string) {
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
-export default function UserProfile({ userId }: { userId: string }) {
+async function requestUserProfile(userId: string) {
+  const response = await fetch(`/api/users/${userId}`, { credentials: "include" });
+  const payload = (await response.json().catch(() => null)) as
+    | UserProfileData
+    | { error?: string }
+    | null;
+  if (!response.ok || !payload || "error" in payload) {
+    throw new Error(payload && "error" in payload ? payload.error : "Unable to load this profile.");
+  }
+  return payload as UserProfileData;
+}
+
+export default function UserProfile({
+  userId,
+  initialData,
+}: {
+  userId: string;
+  initialData: UserProfileData;
+}) {
   const router = useRouter();
-  const [data, setData] = useState<UserProfileData | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const query = useQuery({
+    queryKey: ["profile", "user", userId],
+    queryFn: () => requestUserProfile(userId),
+    initialData,
+    staleTime: 60_000,
+  });
+  const data = query.data;
 
-  useEffect(() => {
-    let active = true;
-
-    async function loadProfile() {
-      setLoading(true);
-      setError(null);
-
-      try {
-        const response = await fetch(`/api/users/${userId}`, {
-          credentials: "include",
-          cache: "force-cache",
-        });
-
-        const payload = (await response.json().catch(() => null)) as
-          | UserProfileData
-          | { error?: string }
-          | null;
-
-        if (!active) {
-          return;
-        }
-
-        if (!response.ok) {
-          setError(
-            payload && "error" in payload && payload.error
-              ? payload.error
-              : "Unable to load this profile.",
-          );
-          return;
-        }
-
-        setData(payload as UserProfileData);
-      } catch {
-        if (active) {
-          setError("Unable to load this profile.");
-        }
-      } finally {
-        if (active) {
-          setLoading(false);
-        }
-      }
-    }
-
-    void loadProfile();
-
-    return () => {
-      active = false;
-    };
-  }, [userId]);
-
-  if (loading) {
-    return (
-      <div className="flex min-h-0 flex-1 items-center justify-center px-4">
-        <p className="text-sm text-muted-foreground">Loading profile…</p>
-      </div>
-    );
+  if (query.isLoading) {
+    return <ProfileSkeleton variant="user" />;
   }
 
-  if (error || !data) {
+  if (query.error || !data) {
     return (
       <div className="flex min-h-0 flex-1 items-center justify-center px-4">
         <Card className="w-full max-w-sm text-center">
           <CardHeader>
             <CardTitle>Profile unavailable</CardTitle>
-            <CardDescription>{error ?? "Profile not found."}</CardDescription>
+            <CardDescription>
+              {query.error instanceof Error ? query.error.message : "Profile not found."}
+            </CardDescription>
           </CardHeader>
           <CardContent>
             <Button variant="outline" onClick={() => router.back()}>
@@ -153,8 +109,7 @@ export default function UserProfile({ userId }: { userId: string }) {
     );
   }
 
-  const { user, isMe, sharedRooms, createdRoomsCount, joinedRoomsCount } =
-    data;
+  const { user, isMe, sharedRooms, createdRoomsCount, joinedRoomsCount } = data;
 
   return (
     <div className="mx-auto w-full max-w-5xl px-4 py-8 sm:px-6">
@@ -211,9 +166,7 @@ export default function UserProfile({ userId }: { userId: string }) {
             </div>
             <div className="rounded-lg border bg-muted/40 p-4 text-center">
               <p className="text-2xl font-bold">{joinedRoomsCount}</p>
-              <p className="mt-1 text-xs text-muted-foreground">
-                Rooms joined
-              </p>
+              <p className="mt-1 text-xs text-muted-foreground">Rooms joined</p>
             </div>
           </div>
         </CardContent>
@@ -248,12 +201,7 @@ export default function UserProfile({ userId }: { userId: string }) {
       ) : (
         <div className="mb-8 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {sharedRooms.map((room) => (
-            <Link
-              key={room.id}
-              href={`/chat/${room.code}`}
-              prefetch
-              onMouseEnter={() => router.prefetch(`/chat/${room.code}`)}
-            >
+            <Link key={room.id} href={`/chat/${room.code}`}>
               <Card className="h-full transition-colors hover:border-primary/50 hover:bg-accent/40">
                 <CardHeader>
                   <CardTitle className="truncate">{room.name}</CardTitle>

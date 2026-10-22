@@ -1,9 +1,10 @@
 import { Suspense } from "react";
 import { headers } from "next/headers";
-import { redirect } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import ContentFallback from "@/components/ContentFallback";
 import UserProfile from "@/components/profile/UserProfile";
 import { auth } from "@/lib/auth";
+import { getUserProfileData } from "@/lib/profile-data";
 
 type UserProfilePageProps = {
   params: Promise<{ userId: string }>;
@@ -27,6 +28,7 @@ async function AuthenticatedUserProfile({ params }: UserProfilePageProps) {
   }
 
   const { userId } = await params;
-
-  return <UserProfile userId={userId} />;
+  const initialData = await getUserProfileData(userId, session.user.id);
+  if (!initialData) notFound();
+  return <UserProfile userId={userId} initialData={initialData} />;
 }

@@ -32,8 +32,8 @@ async function fixture() {
   };
   const result = await build({
     stdin: {
-      contents: `import React from 'react'; import {createRoot} from 'react-dom/client'; import Chat from './components/Chat'; import {TooltipProvider} from './components/ui/tooltip';
-      createRoot(document.getElementById('root')).render(<TooltipProvider><Chat roomId="room" roomCode="CODE" members={[]} initialTheme={{}} /></TooltipProvider>);`,
+      contents: `import React from 'react'; import {createRoot} from 'react-dom/client'; import Chat from './components/Chat'; import {ChatOutboxProvider} from './components/chat/outbox-context'; import {TooltipProvider} from './components/ui/tooltip';
+      createRoot(document.getElementById('root')).render(<TooltipProvider><ChatOutboxProvider><Chat roomId="room" roomCode="CODE" members={[]} initialTheme={{}} /></ChatOutboxProvider></TooltipProvider>);`,
       resolveDir: process.cwd(),
       loader: "tsx",
     },
@@ -174,21 +174,20 @@ test(
         .click();
       await page.getByText("Connection failed").waitFor();
       assert.equal(
-        await page.getByText("Ready · expires 24 hours after sending").count(),
+        await page.getByText("1 attachment", { exact: true }).count(),
         1,
       );
       await page.evaluate(() => {
         window.__failSend = false;
       });
       await page
-        .getByRole("button", { name: "Send message", exact: true })
+        .getByRole("button", { name: "Retry", exact: true })
         .click();
-      await page.getByText("Binding temporarily unavailable").waitFor();
+      await page.getByText("Attachments could not be loaded.").waitFor();
       const countBefore = await page.evaluate(() => window.__sendCount);
       rejectBinding = false;
-      await page
-        .getByRole("button", { name: "Finish sending attachments" })
-        .click();
+      await page.evaluate(() => window.dispatchEvent(new Event("online")));
+      await page.getByRole("button", { name: "Retry attachments" }).click();
       assert.equal(await page.evaluate(() => window.__sendCount), countBefore);
       await page
         .getByRole("button", { name: "Preview photo.png", exact: true })

@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { useQuery } from "@tanstack/react-query";
 import {
   ArrowLeft,
   Crown,
@@ -23,21 +23,10 @@ import {
 } from "@/components/ui/card";
 
 import { authClient } from "@/lib/auth-client";
+import ProfileSkeleton from "@/components/profile/ProfileSkeleton";
+import type { MyProfileData, ProfileRoom } from "@/lib/profile-data";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
-
-type ProfileRoom = {
-  id: string;
-  code: string;
-  name: string;
-  memberCount: number;
-  createdAt: string;
-};
-
-type MyProfileData = {
-  createdRooms: ProfileRoom[];
-  joinedRooms: ProfileRoom[];
-};
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -110,77 +99,42 @@ function RoomGrid({
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
-export default function MyProfile() {
+async function requestMyProfile() {
+  const response = await fetch("/api/me/profile", { credentials: "include" });
+  const payload = (await response.json().catch(() => null)) as
+    | MyProfileData
+    | { error?: string }
+    | null;
+  if (!response.ok || !payload || "error" in payload) {
+    throw new Error(payload && "error" in payload ? payload.error : "Unable to load your profile.");
+  }
+  return payload as MyProfileData;
+}
+
+export default function MyProfile({ initialData }: { initialData: MyProfileData }) {
   const router = useRouter();
   const { data: session } = authClient.useSession();
-  const [data, setData] = useState<MyProfileData | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const query = useQuery({
+    queryKey: ["profile", "self", session?.user.id],
+    queryFn: requestMyProfile,
+    initialData,
+    staleTime: 60_000,
+  });
+  const data = query.data;
 
-  useEffect(() => {
-    let active = true;
-
-    async function loadProfile() {
-      setLoading(true);
-      setError(null);
-
-      try {
-        const response = await fetch("/api/me/profile", {
-          credentials: "include",
-        });
-
-        const payload = (await response.json().catch(() => null)) as
-          | MyProfileData
-          | { error?: string }
-          | null;
-
-        if (!active) {
-          return;
-        }
-
-        if (!response.ok) {
-          setError(
-            payload && "error" in payload && payload.error
-              ? payload.error
-              : "Unable to load your profile.",
-          );
-          return;
-        }
-
-        setData(payload as MyProfileData);
-      } catch {
-        if (active) {
-          setError("Unable to load your profile.");
-        }
-      } finally {
-        if (active) {
-          setLoading(false);
-        }
-      }
-    }
-
-    void loadProfile();
-
-    return () => {
-      active = false;
-    };
-  }, []);
-
-  if (loading) {
-    return (
-      <div className="flex min-h-0 flex-1 items-center justify-center px-4">
-        <p className="text-sm text-muted-foreground">Loading your profile…</p>
-      </div>
-    );
+  if (query.isLoading) {
+    return <ProfileSkeleton variant="self" />;
   }
 
-  if (error || !data) {
+  if (query.error || !data) {
     return (
       <div className="flex min-h-0 flex-1 items-center justify-center px-4">
         <Card className="w-full max-w-sm text-center">
           <CardHeader>
             <CardTitle>Profile unavailable</CardTitle>
-            <CardDescription>{error ?? "Profile not found."}</CardDescription>
+            <CardDescription>
+              {query.error instanceof Error ? query.error.message : "Profile not found."}
+            </CardDescription>
           </CardHeader>
           <CardContent>
             <Button variant="outline" onClick={() => router.back()}>

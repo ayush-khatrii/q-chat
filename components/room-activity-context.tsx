@@ -12,6 +12,7 @@ import {
 } from "react";
 import type * as Ably from "ably";
 import type { UserRoom } from "@/lib/rooms";
+import { useRooms } from "@/hooks/use-rooms";
 import { canModerateRequests } from "@/lib/permissions";
 import {
   isRoomActivity,
@@ -49,7 +50,7 @@ export function RoomActivityProvider({
   userId: string;
   children: ReactNode;
 }) {
-  const [rooms, setRooms] = useState<UserRoom[]>([]);
+  const { rooms } = useRooms(true, userId);
   const [events, setEvents] = useState<Map<string, RoomActivity>>(new Map());
   const [unreadIds, setUnreadIds] = useState<Set<string>>(new Set());
   const [ignoredRequestIds, setIgnoredRequestIds] = useState<Set<string>>(
@@ -72,25 +73,10 @@ export function RoomActivityProvider({
     }
   }, []);
 
-  const loadRooms = useCallback(async () => {
-    const response = await fetch("/api/rooms", { cache: "no-store" });
-    if (!response.ok) return;
-    const payload = (await response.json()) as { rooms?: UserRoom[] };
-    setRooms(payload.rooms ?? []);
-  }, []);
-
   useEffect(() => {
     const timer = window.setInterval(() => setClock(Date.now()), 30_000);
     return () => window.clearInterval(timer);
   }, []);
-
-  useEffect(() => {
-    void loadRooms();
-    const refresh = () => void loadRooms();
-    window.addEventListener("qchat:membership-changed", refresh);
-    return () =>
-      window.removeEventListener("qchat:membership-changed", refresh);
-  }, [loadRooms]);
 
   useEffect(() => {
     const channelNames = [

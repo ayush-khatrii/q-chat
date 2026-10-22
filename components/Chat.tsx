@@ -44,13 +44,14 @@ import {
 import { useMessages, useTyping } from "@ably/chat/react";
 
 import { authClient } from "@/lib/auth-client";
-import { initFcm } from "@/lib/fcm";
 import { useReadReceipts } from "@/hooks/use-read-receipts";
 import {
   getRoomThemeStyle,
   useRoomTheme,
 } from "@/components/chat/chat-appearance";
 import { ChatBubbleMessage } from "@/components/chat/ChatBubbleMessage";
+import { PendingChatBubble } from "@/components/chat/PendingChatBubble";
+import { useChatOutbox } from "@/components/chat/outbox-context";
 import type { RoomTheme, UserRoomMember } from "@/lib/rooms";
 import { messagePreview, prepareReply } from "@/lib/message-replies";
 
@@ -64,6 +65,7 @@ type ChatProps = {
 type MessageMetadata = {
   displayName?: string;
   image?: string;
+  clientMessageId?: string;
 };
 
 function getMessageMetadata(message: AblyMessage): MessageMetadata {
@@ -79,6 +81,10 @@ function getMessageMetadata(message: AblyMessage): MessageMetadata {
         ? metadata.displayName
         : undefined,
     image: typeof metadata.image === "string" ? metadata.image : undefined,
+    clientMessageId:
+      typeof metadata.clientMessageId === "string"
+        ? metadata.clientMessageId
+        : undefined,
   };
 }
 
@@ -91,6 +97,7 @@ export default function Chat({
   const { data: session } = authClient.useSession();
   const currentUser = session?.user;
   const { theme } = useRoomTheme(roomId, initialTheme);
+  const outbox = useChatOutbox(roomId);
 
   const { currentTypers, keystroke, stop } = useTyping();
 
@@ -113,9 +120,6 @@ export default function Chat({
   const [draft, setDraft] = useState("");
   const uploads = useAttachmentUploads(roomId);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const sendingRef = useRef(false);
-  const [sending, setSending] = useState(false);
-  const pendingMessage = useRef<AblyMessage | null>(null);
   const [sendError, setSendError] = useState<string | null>(null);
   const [hasMore, setHasMore] = useState(false);
   const [loadingHistory, setLoadingHistory] = useState(false);
@@ -140,6 +144,7 @@ export default function Chat({
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const historyPageRef = useRef<any>(null);
+  const processingOutboxRef = useRef<string | null>(null);
 
   const {
     sendMessage,
@@ -157,6 +162,8 @@ export default function Chat({
       setMessages((previous) =>
         mergeMessagePage(previous, [event.message], liveSummaries.current),
       );
+      const clientMessageId = getMessageMetadata(event.message).clientMessageId;
+      if (clientMessageId) outbox.remove(clientMessageId);
       if (event.type === ChatMessageEventType.Deleted) {
         setEditing((current) =>
           current?.serial === event.message.serial ? null : current,
@@ -255,8 +262,14 @@ export default function Chat({
     setLoadingHistory(true);
     setHistoryError(null);
 
+    let active = true;
     historyBeforeSubscribe({ limit: 20 })
       .then((page) => {
+        if (!active) return;
+        for (const message of page.items) {
+          const clientMessageId = getMessageMetadata(message).clientMessageId;
+          if (clientMessageId) outbox.remove(clientMessageId);
+        }
         // Realtime events can arrive while history is in flight. Merge instead of
         // replacing state so a newly received message is never briefly discarded.
         setMessages((current) =>
@@ -268,14 +281,19 @@ export default function Chat({
         setHistoryLoaded(true);
       })
       .catch((error) => {
+        if (!active) return;
         console.error("Error loading history:", error);
         setHistoryError("Messages could not be loaded. Please try again.");
         initialHistoryRequestRef.current = undefined;
       })
       .finally(() => {
+        if (!active) return;
         loadingHistoryRef.current = false;
         setLoadingHistory(false);
       });
+    return () => {
+      active = false;
+    };
   }, [historyBeforeSubscribe, historyRetry]);
 
   const loadMore = useCallback(async () => {
@@ -315,12 +333,6 @@ export default function Chat({
       setLoadingHistory(false);
     }
   }, [getScrollViewport, hasMore]);
-
-  useEffect(() => {
-    if (currentUser?.id) {
-      void initFcm(currentUser.id);
-    }
-  }, [currentUser?.id]);
 
   useEffect(() => {
     const viewport = getScrollViewport();
@@ -610,17 +622,87 @@ export default function Chat({
     }
   };
 
-  const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
+  useEffect(() => {
+    if (!currentUser?.id || processingOutboxRef.current) return;
+    if (outbox.messages.some((message) => message.status === "sending")) return;
+
+    const next = outbox.messages.find((message) => message.status === "queued");
+    if (!next) return;
+
+    const alreadyConfirmed = messages.some(
+      (message) => getMessageMetadata(message).clientMessageId === next.id,
+    );
+    if (alreadyConfirmed) {
+      outbox.remove(next.id);
+      return;
+    }
+
+    processingOutboxRef.current = next.id;
+    outbox.markSending(next.id);
+
+    void sendMessage({ text: next.text, metadata: next.metadata })
+      .then((message) => {
+        setMessages((current) =>
+          mergeMessagePage(current, [message], liveSummaries.current),
+        );
+        outbox.remove(next.id);
+
+        if (next.attachmentIds.length) {
+          const pendingKey = `qchat:attachment-bind:${currentUser.id}:${roomId}:${message.serial}`;
+          try {
+            localStorage.setItem(
+              pendingKey,
+              JSON.stringify({ serial: message.serial, ids: next.attachmentIds }),
+            );
+          } catch {
+            /* Binding still runs when storage is unavailable. */
+          }
+          void attachmentRequest("/api/attachments", {
+            action: "resolve",
+            roomId,
+            serial: message.serial,
+            ids: next.attachmentIds,
+          })
+            .then(() => {
+              try {
+                localStorage.removeItem(pendingKey);
+              } catch {
+                /* Best effort. */
+              }
+            })
+            .catch(() => {
+              setSendError("Message sent; attachment processing will retry in the background.");
+            });
+        }
+
+        void fetch("/api/send-notification", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            roomCode: next.roomCode,
+            body: next.text || "Shared an attachment",
+            kind: "reply" in next.metadata ? "reply" : "message",
+          }),
+        }).catch(console.error);
+        void import("@/lib/fcm").then(({ initFcm }) => initFcm(currentUser.id));
+      })
+      .catch((error) => {
+        outbox.markFailed(
+          next.id,
+          error instanceof Error ? error.message : "Unable to send message.",
+        );
+      })
+      .finally(() => {
+        processingOutboxRef.current = null;
+      });
+  }, [currentUser?.id, messages, outbox, roomId, sendMessage]);
+
+  const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
     const text = draft.trim();
 
-    if (
-      sendingRef.current ||
-      (!text && !uploads.files.length && !pendingMessage.current) ||
-      !uploads.ready
-    )
-      return;
+    if ((!text && !uploads.files.length) || !uploads.ready || !currentUser) return;
     if (
       uploads.files.some(
         (file) => file.expiresAt && Date.parse(file.expiresAt) <= Date.now(),
@@ -629,78 +711,26 @@ export default function Chat({
       setSendError("An unsent upload expired. Remove it or retry the upload.");
       return;
     }
-    sendingRef.current = true;
-    setSending(true);
     setSendError(null);
     const replyTarget = replyingTo;
-    try {
-      const ids = uploads.files.flatMap((file) => (file.id ? [file.id] : []));
-      // Retain the sent message until binding succeeds. Retrying must not send it twice.
-      const message =
-        pendingMessage.current ??
-        (await sendMessage({
-          text,
-          metadata: {
-            displayName: currentUser?.name ?? currentUser?.email ?? "User",
-            image: currentUser?.image ?? "",
-            ...(ids.length ? { attachmentIds: ids } : {}),
-            ...(replyTarget ? { reply: prepareReply(replyTarget) } : {}),
-          },
-        }));
-      pendingMessage.current = message;
-      if (ids.length) {
-        const pendingKey = `qchat:attachment-bind:${currentUser?.id}:${roomId}:${message.serial}`;
-        try {
-          localStorage.setItem(
-            pendingKey,
-            JSON.stringify({ serial: message.serial, ids }),
-          );
-        } catch {
-          /* Storage can be unavailable in private browsing. */
-        }
-        await attachmentRequest("/api/attachments", {
-          action: "resolve",
-          roomId,
-          serial: message.serial,
-          ids,
-        });
-        try {
-          localStorage.removeItem(pendingKey);
-        } catch {
-          /* Best effort. */
-        }
-      }
-      pendingMessage.current = null;
-      uploads.clear();
-      setDraft("");
-      setReplyingTo(null);
-    } catch (error) {
-      setSendError(
-        error instanceof Error ? error.message : "Unable to send message.",
-      );
-      return;
-    } finally {
-      sendingRef.current = false;
-      setSending(false);
-    }
+    const ids = uploads.files.flatMap((file) => (file.id ? [file.id] : []));
+    outbox.enqueue({
+      roomId,
+      roomCode,
+      text,
+      attachmentIds: ids,
+      metadata: {
+        displayName: currentUser.name ?? currentUser.email ?? "User",
+        image: currentUser.image ?? "",
+        ...(ids.length ? { attachmentIds: ids } : {}),
+        ...(replyTarget ? { reply: prepareReply(replyTarget) } : {}),
+      },
+    });
+    uploads.clear();
+    setDraft("");
+    setReplyingTo(null);
 
     void stop().catch(console.error);
-
-    if (currentUser?.id) {
-      void fetch("/api/send-notification", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          roomCode,
-          body: text || "Shared an attachment",
-          kind: replyTarget ? "reply" : "message",
-        }),
-      }).catch(console.error);
-
-      void initFcm(currentUser.id);
-    }
   };
 
   return (
@@ -875,6 +905,13 @@ export default function Chat({
               />
             );
           })}
+          {outbox.messages.map((message) => (
+            <PendingChatBubble
+              key={message.id}
+              message={message}
+              onRetry={() => outbox.retry(message.id)}
+            />
+          ))}
         </div>
       </ScrollArea>
 
@@ -909,7 +946,6 @@ export default function Chat({
                 size="icon"
                 className="size-8 shrink-0"
                 aria-label="Cancel reply"
-                disabled={sending || Boolean(pendingMessage.current)}
                 onClick={() => {
                   setReplyingTo(null);
                   textareaRef.current?.focus();
@@ -923,7 +959,7 @@ export default function Chat({
             files={uploads.files}
             remove={uploads.remove}
             retry={uploads.retry}
-            disabled={sending || Boolean(pendingMessage.current)}
+            disabled={false}
           />
           <input
             ref={fileInputRef}
@@ -945,11 +981,7 @@ export default function Chat({
               size="icon"
               className="size-11 shrink-0"
               aria-label="Add attachments"
-              disabled={
-                sending ||
-                Boolean(pendingMessage.current) ||
-                uploads.files.length >= ATTACHMENT_CONFIG.maxFilesPerMessage
-              }
+              disabled={uploads.files.length >= ATTACHMENT_CONFIG.maxFilesPerMessage}
               onClick={() => fileInputRef.current?.click()}
             >
               <Paperclip />
@@ -957,7 +989,6 @@ export default function Chat({
             <Textarea
               ref={textareaRef}
               value={draft}
-              disabled={sending || Boolean(pendingMessage.current)}
               rows={1}
               placeholder="Type something…"
               onChange={handleChange}
@@ -975,17 +1006,10 @@ export default function Chat({
               type="submit"
               size="icon"
               disabled={
-                sending ||
                 !uploads.ready ||
-                (!draft.trim() &&
-                  !uploads.files.length &&
-                  !pendingMessage.current)
+                (!draft.trim() && !uploads.files.length)
               }
-              aria-label={
-                pendingMessage.current
-                  ? "Finish sending attachments"
-                  : "Send message"
-              }
+              aria-label="Send message"
               className="size-11 shrink-0 rounded-full"
             >
               <Send className="size-4" />

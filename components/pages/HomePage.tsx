@@ -2,7 +2,7 @@
 
 import { InstallApp } from "@/components/pwa/InstallApp";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { MessageCircle, ArrowRight, MessageSquare } from "lucide-react";
@@ -41,10 +41,6 @@ export default function HomePage() {
   const router = useRouter();
   const { data: session } = authClient.useSession();
   const [signingIn, setSigningIn] = useState(false);
-
-  useEffect(() => {
-    router.prefetch("/chat");
-  }, [router]);
   const [signInError, setSignInError] = useState<string | null>(null);
   const [createRoomOpen, setCreateRoomOpen] = useState(false);
   const [isCreatingRoom, setIsCreatingRoom] = useState(false);
@@ -78,14 +74,16 @@ export default function HomePage() {
         credentials: "include",
         body: JSON.stringify({ name, customCode }),
       });
-      const payload = (await response.json().catch(() => null)) as
-        | { room?: UserRoom; error?: string }
-        | null;
+      const payload = (await response.json().catch(() => null)) as {
+        room?: UserRoom;
+        error?: string;
+      } | null;
 
       if (!response.ok || !payload?.room) {
         throw new Error(payload?.error ?? "Unable to create your room.");
       }
 
+      window.dispatchEvent(new Event("qchat:membership-changed"));
       router.push(`/chat/${payload.room.code}`);
     } finally {
       setIsCreatingRoom(false);
@@ -97,114 +95,118 @@ export default function HomePage() {
       <main className="py-20 relative flex min-h-screen items-center justify-center overflow-hidden px-5">
         <div className="absolute left-1/2 top-1/2 h-[500px] w-[500px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-primary/10 blur-[120px]" />
         <section className="relative z-10 mx-auto flex max-w-5xl flex-col items-center text-center">
-        <div className="mb-8 cursor-pointer flex items-center gap-3 rounded-full border border-primary/70 bg-black px-4 py-2 backdrop-blur">
-          <div className="flex  h-10 w-10 items-center justify-center rounded-xl bg-primary text-primary-foreground">
-            <MessageCircle className="h-5 w-5" />
+          <div className="mb-8 cursor-pointer flex items-center gap-3 rounded-full border border-primary/70 bg-black px-4 py-2 backdrop-blur">
+            <div className="flex  h-10 w-10 items-center justify-center rounded-xl bg-primary text-primary-foreground">
+              <MessageCircle className="h-5 w-5" />
+            </div>
+
+            <span className="text-xl font-bold tracking-tight">QChat</span>
           </div>
 
-          <span className="text-xl font-bold tracking-tight">QChat</span>
-        </div>
+          {/* Badge */}
 
-        {/* Badge */}
+          <Badge
+            variant="secondary"
+            className="mb-6 rounded-full px-4 py-4 border border-accent-foreground/10"
+          >
+            Room Based • Instant Conversations
+          </Badge>
 
-        <Badge
-          variant="secondary"
-          className="mb-6 rounded-full px-4 py-4 border border-accent-foreground/10"
-        >
-          Room Based • Instant Conversations
-        </Badge>
+          <h1 className="max-w-4xl text-4xl font-extrabold tracking-tight sm:text-5xl md:text-6xl lg:text-7xl">
+            Join Any Room.
+            <br />
+            Chat Instantly.
+          </h1>
 
-        <h1 className="max-w-4xl text-4xl font-extrabold tracking-tight sm:text-5xl md:text-6xl lg:text-7xl">
-          Join Any Room.
-          <br />
-          Chat Instantly.
-        </h1>
-
-        <p className="mt-6 max-w-2xl text-sm leading-7 text-muted-foreground sm:text-base md:text-lg">
-          QChat lets anyone create or join rooms and start conversations in
-          seconds. No unnecessary steps. Just instant real-time chatting.
-        </p>
-
-        {/* CTA */}
-
-        <div className="mt-10 flex flex-col gap-3 sm:flex-row">
-          {!isLoggedIn ? (
-            <>
-              <Button
-                size="lg"
-                onClick={handleGoogleSignIn}
-                disabled={signingIn}
-                className="h-12 px-8 text-base gap-2"
-              >
-                <GoogleIcon />
-                {signingIn ? "Signing in..." : "Sign in with Google"}
-              </Button>
-
-              <Button
-                size="lg"
-                variant="outline"
-                className="h-12 px-8 text-base"
-                onClick={handleGoogleSignIn}
-                disabled={signingIn}
-              >
-                JOIN ROOM
-                <ArrowRight className="ml-2 h-4 w-4" />
-              </Button>
-            </>
-          ) : (
-            <>
-              <Button asChild size="lg" className="h-12 px-8 text-base">
-                <Link href="/chat" prefetch>
-                  <MessageSquare className="mr-2 h-4 w-4" />
-                  GO TO CHAT
-                </Link>
-              </Button>
-
-              <Button
-                size="lg"
-                variant="outline"
-                className="h-12 px-8 text-base"
-                onClick={() => setCreateRoomOpen(true)}
-              >
-                CREATE A ROOM
-                <ArrowRight className="ml-2 h-4 w-4" />
-              </Button>
-            </>
-          )}
-        </div>
-
-        <div className="mt-4"><InstallApp /></div>
-
-        {signInError ? (
-          <p className="mt-3 text-sm text-destructive">{signInError}</p>
-        ) : null}
-
-        {isLoggedIn && (
-          <p className="mt-4 text-sm text-muted-foreground">
-            Welcome back,{" "}
-            <span className="font-medium text-foreground">
-              {session?.user?.name}
-            </span>
-            !
+          <p className="mt-6 max-w-2xl text-sm leading-7 text-muted-foreground sm:text-base md:text-lg">
+            QChat lets anyone create or join rooms and start conversations in
+            seconds. No unnecessary steps. Just instant real-time chatting.
           </p>
-        )}
 
-        <div className="mt-10 px-5 flex items-center justify-center gap-8 text-center">
-          <div>
-            <h3 className="text-xl font-bold">∞</h3>
-            <p className="text-xs text-muted-foreground">Unlimited Rooms</p>
+          {/* CTA */}
+
+          <div className="mt-10 flex flex-col gap-3 sm:flex-row">
+            {!isLoggedIn ? (
+              <>
+                <Button
+                  size="lg"
+                  onClick={handleGoogleSignIn}
+                  disabled={signingIn}
+                  className="h-12 px-8 text-base gap-2"
+                >
+                  <GoogleIcon />
+                  {signingIn ? "Signing in..." : "Sign in with Google"}
+                </Button>
+
+                <Button
+                  size="lg"
+                  variant="outline"
+                  className="h-12 px-8 text-base"
+                  onClick={handleGoogleSignIn}
+                  disabled={signingIn}
+                >
+                  JOIN ROOM
+                  <ArrowRight className="ml-2 h-4 w-4" />
+                </Button>
+              </>
+            ) : (
+              <>
+                <Button asChild size="lg" className="h-12 px-8 text-base">
+                  <Link href="/chat">
+                    <MessageSquare className="mr-2 h-4 w-4" />
+                    GO TO CHAT
+                  </Link>
+                </Button>
+
+                <Button
+                  size="lg"
+                  variant="outline"
+                  className="h-12 px-8 text-base"
+                  onClick={() => setCreateRoomOpen(true)}
+                >
+                  CREATE A ROOM
+                  <ArrowRight className="ml-2 h-4 w-4" />
+                </Button>
+              </>
+            )}
           </div>
-          <div className="h-8 w-px bg-border" />
-          <div>
-            <h3 className="text-xl font-bold">⚡</h3>
-            <p className="text-xs text-muted-foreground">Real-time Messages</p>
+
+          <div className="mt-4">
+            <InstallApp />
           </div>
-          <div className="h-8 w-px bg-border" />
-          <div>
-            <h3 className="text-xl font-bold">🌍</h3>
-            <p className="text-xs text-muted-foreground">Chat Anywhere</p>
+
+          {signInError ? (
+            <p className="mt-3 text-sm text-destructive">{signInError}</p>
+          ) : null}
+
+          {isLoggedIn && (
+            <p className="mt-4 text-sm text-muted-foreground">
+              Welcome back,{" "}
+              <span className="font-medium text-foreground">
+                {session?.user?.name}
+              </span>
+              !
+            </p>
+          )}
+
+          <div className="mt-10 px-5 flex items-center justify-center gap-8 text-center">
+            <div>
+              <h3 className="text-xl font-bold">∞</h3>
+              <p className="text-xs text-muted-foreground">Unlimited Rooms</p>
+            </div>
+            <div className="h-8 w-px bg-border" />
+            <div>
+              <h3 className="text-xl font-bold">⚡</h3>
+              <p className="text-xs text-muted-foreground">
+                Real-time Messages
+              </p>
+            </div>
+            <div className="h-8 w-px bg-border" />
+            <div>
+              <h3 className="text-xl font-bold">🌍</h3>
+              <p className="text-xs text-muted-foreground">Chat Anywhere</p>
+            </div>
           </div>
-        </div>
         </section>
         {/* <ConnectionStatusComponent /> */}
       </main>

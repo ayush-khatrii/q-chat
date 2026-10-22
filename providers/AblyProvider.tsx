@@ -1,7 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { useEffect, useMemo, useRef } from "react";
+import { createContext, useContext, useEffect, useState } from "react";
 import * as Ably from "ably";
 import { AblyProvider as RealtimeProvider } from "ably/react";
 import { ChatClient, LogLevel } from "@ably/chat";
@@ -13,31 +13,23 @@ type AppAblyProviderProps = {
   children: ReactNode;
 };
 
+const AblyReadyContext = createContext(false);
+
+export function useAblyReady() {
+  return useContext(AblyReadyContext);
+}
+
 // 1. The Main Gatekeeper Provider
 export default function AppAblyProvider({ children }: AppAblyProviderProps) {
   return <SessionAwareAblyProvider>{children}</SessionAwareAblyProvider>;
 }
 
 function SessionAwareAblyProvider({ children }: { children: ReactNode }) {
-  const { data: session, isPending } = authClient.useSession();
-
-  // If better-auth is still checking the session, show nothing (or a spinner)
-  if (isPending) {
-    return null;
+  const { data: session } = authClient.useSession();
+  if (!session?.user.id) {
+    return <AblyReadyContext.Provider value={false}>{children}</AblyReadyContext.Provider>;
   }
-
-  // If the user isn't logged in, don't initialize Ably at all.
-  // Just render the app normally.
-  if (!session) {
-    return <>{children}</>;
-  }
-
-  // If we have a session, mount the real Ably clients safely
-  return (
-    <AblyConnectedProvider userId={session.user.id}>
-      {children}
-    </AblyConnectedProvider>
-  );
+  return <AblyConnectedProvider userId={session.user.id}>{children}</AblyConnectedProvider>;
 }
 
 // 2. The Clean Realtime Client Initializer
@@ -46,21 +38,45 @@ function AblyConnectedProvider({
   userId,
 }: {
   children: ReactNode;
-  userId: string;
+  userId?: string;
 }) {
-  const disposeTimer = useRef<number | null>(null);
-  const { realtimeClient, chatClient } = useMemo(() => {
+  const [clients, setClients] = useState<{
+    realtimeClient: Ably.Realtime;
+    chatClient: ChatClient;
+  } | null>(null);
+
+  useEffect(() => {
     const realtime = new Ably.Realtime({
       authUrl: "/api/ably/auth",
     });
 
     const chat = new ChatClient(realtime, {
       logLevel: LogLevel.Info,
+      idempotentRestPublishing: true,
     });
 
-    return { realtimeClient: realtime, chatClient: chat };
+    setClients({ realtimeClient: realtime, chatClient: chat });
+    return () => {
+      void chat.dispose().finally(() => realtime.close());
+    };
   }, []);
 
+  if (!clients) {
+    return <AblyReadyContext.Provider value={false}>{children}</AblyReadyContext.Provider>;
+  }
+
+  return <ConnectedClients clients={clients} userId={userId}>{children}</ConnectedClients>;
+}
+
+function ConnectedClients({
+  clients: { realtimeClient, chatClient },
+  children,
+  userId,
+}: {
+  clients: { realtimeClient: Ably.Realtime; chatClient: ChatClient };
+  children: ReactNode;
+  userId?: string;
+}) {
   useEffect(() => {
     const refresh = () => {
       void realtimeClient.auth.authorize().catch(() => {});
@@ -77,25 +93,18 @@ function AblyConnectedProvider({
     };
   }, [realtimeClient]);
 
-  useEffect(() => {
-    if (disposeTimer.current !== null) {
-      window.clearTimeout(disposeTimer.current);
-      disposeTimer.current = null;
-    }
-
-    return () => {
-      disposeTimer.current = window.setTimeout(() => {
-        void chatClient.dispose().finally(() => realtimeClient.close());
-      }, 0);
-    };
-  }, [chatClient, realtimeClient]);
-
   return (
     <RealtimeProvider client={realtimeClient}>
       <ChatClientProvider client={chatClient}>
-        <RoomActivityProvider client={realtimeClient} userId={userId}>
-          {children}
-        </RoomActivityProvider>
+        <AblyReadyContext.Provider value={true}>
+          {userId ? (
+            <RoomActivityProvider client={realtimeClient} userId={userId}>
+              {children}
+            </RoomActivityProvider>
+          ) : (
+            children
+          )}
+        </AblyReadyContext.Provider>
       </ChatClientProvider>
     </RealtimeProvider>
   );

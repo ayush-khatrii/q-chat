@@ -151,6 +151,18 @@ export default function ChatMembersSidebar({
                 );
               })}
 
+              {isLoading && rooms.length === 0
+                ? Array.from({ length: 4 }, (_, index) => (
+                    <div key={index} className="mb-1 flex items-center gap-3 rounded-xl px-3 py-3" aria-hidden="true">
+                      <div className="size-10 shrink-0 animate-pulse rounded-full bg-muted" />
+                      <div className="min-w-0 flex-1 space-y-2">
+                        <div className="h-3.5 w-2/3 animate-pulse rounded bg-muted" />
+                        <div className="h-3 w-4/5 animate-pulse rounded bg-muted/70" />
+                      </div>
+                    </div>
+                  ))
+                : null}
+
               {!isLoading && filteredRooms.length === 0 ? (
                 <div className="px-3 py-8 text-center text-xs text-muted-foreground">
                   No rooms found.

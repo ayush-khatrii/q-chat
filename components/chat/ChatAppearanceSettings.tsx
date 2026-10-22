@@ -99,8 +99,18 @@ export default function ChatAppearanceSettings() {
 
   if (roomsLoading || !selectedRoom) {
     return (
-      <div className="flex min-h-0 flex-1 items-center justify-center">
-        <Loader2 className="size-5 animate-spin text-muted-foreground" />
+      <div className="flex min-h-0 flex-1 flex-col" aria-busy="true" aria-label="Loading room appearance">
+        <div className="flex h-16 items-center gap-3 border-b px-4">
+          <div className="size-10 animate-pulse rounded-lg bg-muted" />
+          <div className="space-y-2">
+            <div className="h-4 w-36 animate-pulse rounded bg-muted" />
+            <div className="h-3 w-48 animate-pulse rounded bg-muted/70" />
+          </div>
+        </div>
+        <div className="grid flex-1 gap-4 p-4 lg:grid-cols-2">
+          <div className="animate-pulse rounded-2xl bg-muted/70" />
+          <div className="animate-pulse rounded-2xl bg-muted/50" />
+        </div>
       </div>
     );
   }

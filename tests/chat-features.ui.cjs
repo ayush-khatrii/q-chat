@@ -24,10 +24,10 @@ async function fixture() {
       export const useTyping=()=>({currentTypers:new Set(),keystroke:async()=>{},stop:async()=>{}});
       export function useMessages({listener,reactionsListener}) {
         const callbacks=useRef({listener,reactionsListener});callbacks.current={listener,reactionsListener};
-        const historyBeforeSubscribe=useCallback(async()=>({items:[stored,other],isLast:()=>true}),[]);
+        const historyBeforeSubscribe=useCallback(async()=>{if(window.__delayHistory)await new Promise(resolve=>window.__releaseHistory=resolve);return {items:[stored,other],isLast:()=>true};},[]);
         useEffect(()=>{window.__delete=()=>{stored=new DefaultMessage({...stored,action:ChatMessageAction.MessageDelete,version:{serial:'999',timestamp:new Date()}});callbacks.current.listener({type:ChatMessageEventType.Deleted,message:stored});};},[]);
         return {historyBeforeSubscribe,
-          sendMessage:async(params)=>{window.__sends=(window.__sends||0)+1;window.__sendParams=params;const sent=new DefaultMessage({serial:'003',clientId:'self',text:params.text,metadata:params.metadata,headers:{},timestamp:new Date(),action:ChatMessageAction.MessageCreate,version:{serial:'003',timestamp:new Date()},reactions:emptyMessageReactions()});callbacks.current.listener({type:ChatMessageEventType.Created,message:sent});return sent;},
+          sendMessage:async(params)=>{window.__sends=(window.__sends||0)+1;window.__sendParams=params;if(window.__delaySend)await new Promise(resolve=>window.__releaseSend=resolve);const sent=new DefaultMessage({serial:'003',clientId:'self',text:params.text,metadata:params.metadata,headers:{},timestamp:new Date(),action:ChatMessageAction.MessageCreate,version:{serial:'003',timestamp:new Date()},reactions:emptyMessageReactions()});callbacks.current.listener({type:ChatMessageEventType.Created,message:sent});return sent;},
           getMessage:async(serial)=>serial==='001'?stored:other,deleteMessage:async()=>{},
           updateMessage:async(serial,params)=>{
             window.__updates=(window.__updates||0)+1;
@@ -51,8 +51,8 @@ async function fixture() {
   };
   const result = await build({
     stdin: {
-      contents: `import React from 'react'; import {createRoot} from 'react-dom/client'; import Chat from './components/Chat'; import {TooltipProvider} from './components/ui/tooltip';
-      createRoot(document.getElementById('root')).render(<TooltipProvider><div className="flex h-dvh flex-col"><Chat roomId="room" roomCode="CODE" members={[]} initialTheme={{}} /></div></TooltipProvider>);`,
+      contents: `import React from 'react'; import {createRoot} from 'react-dom/client'; import Chat from './components/Chat'; import {ChatOutboxProvider} from './components/chat/outbox-context'; import {TooltipProvider} from './components/ui/tooltip';
+      createRoot(document.getElementById('root')).render(<TooltipProvider><ChatOutboxProvider><div className="flex h-dvh flex-col"><Chat roomId="room" roomCode="CODE" members={[]} initialTheme={{}} /></div></ChatOutboxProvider></TooltipProvider>);`,
       resolveDir: process.cwd(),
       loader: 'tsx',
     },
@@ -96,6 +96,37 @@ async function fixture() {
   return { server, url: `http://127.0.0.1:${server.address().port}` };
 }
 
+test('browser: sending stays usable while history and acknowledgement are delayed', { timeout: 60000 }, async () => {
+  const { server, url } = await fixture();
+  const browser = await chromium.launch({ headless: true });
+  const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
+  await page.addInitScript(() => {
+    window.__delayHistory = true;
+    window.__delaySend = true;
+  });
+  try {
+    await page.goto(url);
+    const composer = page.locator('textarea').first();
+    await composer.fill('Sent before history');
+    await page.getByRole('button', { name: 'Send message', exact: true }).click();
+    await page.locator('[data-pending-message]').filter({ hasText: 'Sent before history' }).waitFor();
+    await composer.fill('Next draft');
+    assert.equal(await composer.inputValue(), 'Next draft');
+    await page.evaluate(() => window.__releaseSend());
+    await page.locator('[data-pending-message]').waitFor({ state: 'hidden' });
+    await page.getByText('Sent before history', { exact: true }).waitFor();
+    await page.evaluate(() => window.__releaseHistory());
+    await page.getByText('Original message', { exact: true }).waitFor();
+    assert.equal(
+      await page.locator('[data-message-serial]').filter({ hasText: 'Sent before history' }).count(),
+      1,
+    );
+  } finally {
+    await browser.close();
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
+
 test('browser: edits preserve drafts and metadata; distinct reactions toggle on both sides', { timeout: 60000 }, async () => {
   const { server, url } = await fixture();
   const browser = await chromium.launch({ headless: true });
@@ -120,13 +151,15 @@ test('browser: edits preserve drafts and metadata; distinct reactions toggle on 
     await page.getByRole('alert').filter({ hasText: 'Temporary update failure' }).waitFor();
     await page.evaluate(() => (window.__failEdit = false));
     await page.getByRole('button', { name: 'Save changes' }).click();
-    await page.getByText('Changed message', { exact: true }).waitFor();
+    await page.getByRole('dialog').waitFor({ state: 'hidden' });
+    const changedMessage = page.getByText('Changed message', { exact: true });
+    await changedMessage.waitFor();
     assert.equal(await composer.inputValue(), 'Unfinished draft');
     assert.equal(await page.evaluate(() => window.__params.headers.preserve), 'yes');
     assert.deepEqual(await page.evaluate(() => window.__params.metadata.attachmentIds), []);
     assert.equal(await page.evaluate(() => window.__sends || 0), 0);
     await page.getByText('· edited', { exact: true }).waitFor();
-    await page.getByText('Changed message', { exact: true }).click({ button: 'right' });
+    await changedMessage.click({ button: 'right' });
     await page.getByRole('menuitemcheckbox', { name: 'React 👍', exact: true }).click();
     await page
       .getByRole('button', {
@@ -134,7 +167,7 @@ test('browser: edits preserve drafts and metadata; distinct reactions toggle on 
         exact: true,
       })
       .waitFor();
-    await page.getByText('Changed message', { exact: true }).click({ button: 'right' });
+    await changedMessage.click({ button: 'right' });
     await page.getByRole('menuitemcheckbox', { name: 'React ❤️', exact: true }).click();
     await page
       .getByRole('button', {
@@ -143,7 +176,7 @@ test('browser: edits preserve drafts and metadata; distinct reactions toggle on 
       })
       .waitFor();
     assert.equal(await page.evaluate(() => window.__reactionType), 'distinct');
-    const bubble = page.locator('[data-slot=bubble]').filter({ has: page.getByText('Changed message', { exact: true }) });
+    const bubble = page.locator('[data-slot=bubble]').filter({ has: changedMessage });
     const bubbleBox = await bubble.boundingBox();
     const badge = bubble.locator('[data-slot=bubble-reactions]');
     const badgeBox = await badge.boundingBox();
@@ -171,7 +204,7 @@ test('browser: edits preserve drafts and metadata; distinct reactions toggle on 
     await page.getByText('Incoming message', { exact: true }).click({ button: 'right' });
     assert.equal(await page.getByRole('menuitem', { name: 'Edit', exact: true }).count(), 0);
     await page.keyboard.press('Escape');
-    await page.getByText('Changed message', { exact: true }).click({ button: 'right' });
+    await changedMessage.click({ button: 'right' });
     await page.getByRole('menuitem', { name: 'Edit', exact: true }).click();
     await page.evaluate(() => window.__delete());
     await page.getByRole('dialog').waitFor({ state: 'hidden' });
@@ -201,7 +234,7 @@ test('browser: touch hold and keyboard open emoji choices with message actions',
   });
   try {
     await page.goto(url);
-    const message = page.locator('[data-slot=bubble-content]').filter({ hasText: 'Original message' });
+    const message = page.getByText('Original message', { exact: true });
     await message.waitFor();
     assert.equal(await page.locator('[data-slot=bubble-reactions]').count(), 0);
     await message.tap();

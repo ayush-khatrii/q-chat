@@ -144,9 +144,11 @@ export function MessageAttachments({
           </Button>
         </div>
       ) : !files.length ? (
-        <p role="status" className="text-xs">
-          Loading attachments…
-        </p>
+        <div role="status" aria-label="Loading attachments" className="flex gap-2">
+          {idsKey.split(",").map((id) => (
+            <div key={id} className="h-16 w-36 animate-pulse rounded-xl bg-muted/70" />
+          ))}
+        </div>
       ) : null}
       <AttachmentGroup
         aria-label="Message attachments"
@@ -233,7 +235,7 @@ export function MessageAttachments({
               {previewError}
             </p>
           ) : !previewUrl ? (
-            <p role="status">Loading preview…</p>
+            <div role="status" aria-label="Loading preview" className="h-64 w-full animate-pulse rounded-xl bg-muted" />
           ) : (
             <>
               {selected?.preview === "image" && (

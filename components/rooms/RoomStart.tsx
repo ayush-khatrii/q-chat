@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -20,6 +20,7 @@ import { Input } from "@/components/ui/input";
 import RoomCreateDialog from "@/components/rooms/RoomCreateDialog";
 import RoomJoinDialog from "@/components/rooms/RoomJoinDialog";
 import { useRooms } from "@/hooks/use-rooms";
+import { authClient } from "@/lib/auth-client";
 
 function initials(name: string) {
   return name
@@ -52,8 +53,11 @@ function RoomListSkeleton() {
   );
 }
 
-export default function RoomStart({ userId }: { userId: string }) {
+export default function RoomStart() {
   const router = useRouter();
+  const { data: session, isPending: isSessionPending } =
+    authClient.useSession();
+  const userId = session?.user.id;
   const [search, setSearch] = useState("");
   const [createOpen, setCreateOpen] = useState(false);
   const [joinOpen, setJoinOpen] = useState(false);
@@ -65,7 +69,12 @@ export default function RoomStart({ userId }: { userId: string }) {
     createRoom,
     joinRoom,
     error,
-  } = useRooms(true, userId);
+  } = useRooms(Boolean(userId), userId);
+  const isDirectoryLoading = isSessionPending || !userId || isLoading;
+
+  useEffect(() => {
+    if (!isSessionPending && !userId) router.replace("/");
+  }, [isSessionPending, router, userId]);
   const filteredRooms = useMemo(() => {
     const query = search.trim().toLowerCase();
     if (!query) return rooms;
@@ -103,11 +112,15 @@ export default function RoomStart({ userId }: { userId: string }) {
             </p>
           </div>
           <div className="flex gap-2">
-            <Button variant="outline" onClick={() => setJoinOpen(true)}>
+            <Button
+              variant="outline"
+              disabled={!userId}
+              onClick={() => setJoinOpen(true)}
+            >
               <LogIn className="size-4" />
               Join
             </Button>
-            <Button onClick={() => setCreateOpen(true)}>
+            <Button disabled={!userId} onClick={() => setCreateOpen(true)}>
               <Plus className="size-4" />
               Create room
             </Button>
@@ -128,8 +141,10 @@ export default function RoomStart({ userId }: { userId: string }) {
         ) : null}
 
         <div className="mt-6">
-          {isLoading && rooms.length === 0 ? <RoomListSkeleton /> : null}
-          {!isLoading && rooms.length === 0 ? (
+          {isDirectoryLoading && rooms.length === 0 ? (
+            <RoomListSkeleton />
+          ) : null}
+          {!isDirectoryLoading && rooms.length === 0 ? (
             <div className="rounded-2xl border border-dashed border-border bg-card/40 px-5 py-14 text-center sm:py-20">
               <div className="mx-auto flex size-12 items-center justify-center rounded-2xl bg-muted text-muted-foreground">
                 <MessageCircle className="size-6" />
@@ -151,7 +166,9 @@ export default function RoomStart({ userId }: { userId: string }) {
               </div>
             </div>
           ) : null}
-          {!isLoading && rooms.length > 0 && filteredRooms.length === 0 ? (
+          {!isDirectoryLoading &&
+          rooms.length > 0 &&
+          filteredRooms.length === 0 ? (
             <div className="rounded-2xl border border-dashed py-12 text-center">
               <p className="text-sm font-medium">No matching chats</p>
               <p className="mt-1 text-xs text-muted-foreground">

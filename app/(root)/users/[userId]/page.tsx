@@ -1,7 +1,5 @@
-import { Suspense } from "react";
 import { headers } from "next/headers";
 import { notFound, redirect } from "next/navigation";
-import ContentFallback from "@/components/ContentFallback";
 import UserProfile from "@/components/profile/UserProfile";
 import { auth } from "@/lib/auth";
 import { getUserProfileData } from "@/lib/profile-data";
@@ -10,15 +8,9 @@ type UserProfilePageProps = {
   params: Promise<{ userId: string }>;
 };
 
-export default function UserProfilePage({ params }: UserProfilePageProps) {
-  return (
-    <Suspense fallback={<ContentFallback />}>
-      <AuthenticatedUserProfile params={params} />
-    </Suspense>
-  );
-}
-
-async function AuthenticatedUserProfile({ params }: UserProfilePageProps) {
+export default async function UserProfilePage({
+  params,
+}: UserProfilePageProps) {
   const session = await auth.api.getSession({
     headers: await headers(),
   });

@@ -6,6 +6,13 @@ import { oneTap } from "better-auth/plugins";
 export const auth = betterAuth({
   baseURL: process.env.BETTER_AUTH_URL,
   basePath: "/api/auth",
+  session: {
+    cookieCache: {
+      enabled: true,
+      maxAge: 60,
+      strategy: "compact",
+    },
+  },
   socialProviders: {
     google: {
       clientId: process.env.GOOGLE_CLIENT_ID as string,

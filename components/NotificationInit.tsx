@@ -1,29 +1,32 @@
 "use client";
 import { useEffect } from "react";
-import { initFcm } from "@/lib/fcm";
 import { authClient } from "@/lib/auth-client";
 
 export default function NotificationInit() {
-  const { data: session, isPending } = authClient.useSession();
-
-  // Log on every render to confirm component is alive
-  console.log("🔔 NotificationInit render:", {
-    hasSession: !!session,
-    userId: session?.user?.id,
-    isPending,
-  });
+  const { data: session } = authClient.useSession();
 
   useEffect(() => {
     const userId = session?.user?.id;
-    if (!userId) {
-      console.log("🔔 NotificationInit: no userId yet, waiting...");
-      return;
-    }
+    if (!userId) return;
 
-    console.log("🔔 NotificationInit: user detected, starting FCM registration");
-    initFcm(userId).then((ok) => {
-      console.log("🔔 NotificationInit: FCM registration result:", ok);
-    });
+    let cancelled = false;
+    const initialize = () => {
+      void import("@/lib/fcm")
+        .then(({ initFcm }) => {
+          if (!cancelled) void initFcm(userId);
+        })
+        .catch(() => {});
+    };
+    const supportsIdle = typeof window.requestIdleCallback === "function";
+    const idleId = supportsIdle
+      ? window.requestIdleCallback(initialize, { timeout: 2_000 })
+      : window.setTimeout(initialize, 500);
+
+    return () => {
+      cancelled = true;
+      if (supportsIdle) window.cancelIdleCallback(idleId);
+      else window.clearTimeout(idleId);
+    };
   }, [session?.user?.id]);
 
   return null;

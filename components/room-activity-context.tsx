@@ -17,19 +17,28 @@ import { canModerateRequests } from "@/lib/permissions";
 import {
   isRoomActivity,
   roomActivityChannel,
+  roomJoinRequestChannel,
   userActivityChannel,
   type RoomActivity,
 } from "@/lib/room-activity";
+
+import {
+  pendingJoinRequests,
+  pruneInbox,
+  requestKey,
+  type InboxState,
+} from "@/lib/join-request-inbox";
 
 type Decision = "approve" | "reject";
 
 type ActivityContextValue = {
   activities: RoomActivity[];
   pendingRequests: RoomActivity[];
-  unreadCount: number;
+  inboxReady: boolean;
+  isRequestSeen: (event: RoomActivity) => boolean;
+  markRequestSeen: (event: RoomActivity) => void;
   ignoredRequestIds: Set<string>;
   rooms: UserRoom[];
-  markRead: () => void;
   ignoreRequest: (id: string) => void;
   decideRequest: (activity: RoomActivity, decision: Decision) => Promise<void>;
   canDecide: (roomId: string) => boolean;
@@ -52,27 +61,26 @@ function RoomActivitySubscription({
   rooms: UserRoom[];
   addEvent: (event: RoomActivity, live: boolean) => void;
 }) {
-  const liveReady = useRef(false);
-
   useEffect(() => {
-    liveReady.current = false;
     if (!realtimeClient || !userId) return;
 
     const channelNames = [
       userActivityChannel(userId),
       ...rooms.map((room) => roomActivityChannel(room.id)),
+      ...rooms
+        .filter((room) => canModerateRequests(room.currentUserRole))
+        .map((room) => roomJoinRequestChannel(room.id)),
     ];
     const channels = [...new Set(channelNames)].map((name) =>
       realtimeClient.channels.get(name),
     );
     const listener = (message: Ably.Message) => {
-      if (!isRoomActivity(message.data)) return;
-      addEvent(message.data, liveReady.current);
+      if (cancelled || !isRoomActivity(message.data)) return;
+      addEvent(message.data, true);
       if (
-        liveReady.current &&
-        (message.data.type === "room.deleted" ||
-          (message.data.type === "member.removed" &&
-            message.data.subject?.id === userId))
+        message.data.type === "room.deleted" ||
+        (message.data.type === "member.removed" &&
+          message.data.subject?.id === userId)
       ) {
         window.location.assign("/chat");
       }
@@ -81,25 +89,27 @@ function RoomActivitySubscription({
     let cancelled = false;
     void Promise.all(
       channels.map(async (channel) => {
-        channel.subscribe(listener);
         try {
-          const page = await channel.history({
+          await channel.subscribe(listener);
+          let page = await channel.history({
             start: Date.now() - 15 * 60 * 1000,
             direction: "forwards",
             limit: 200,
           });
-          if (!cancelled) {
+          while (!cancelled) {
             for (const message of page.items) {
               if (isRoomActivity(message.data)) addEvent(message.data, false);
             }
+            if (!page.hasNext()) break;
+            const next = await page.next();
+            if (!next) break;
+            page = next;
           }
         } catch {
           // Live delivery remains available when history is not configured.
         }
       }),
-    ).finally(() => {
-      if (!cancelled) liveReady.current = true;
-    });
+    );
 
     return () => {
       cancelled = true;
@@ -121,9 +131,94 @@ export function RoomActivityProvider({
 }) {
   const { rooms } = useRooms(Boolean(userId), userId);
   const [events, setEvents] = useState<Map<string, RoomActivity>>(new Map());
-  const [unreadIds, setUnreadIds] = useState<Set<string>>(new Set());
-  const [ignoredRequestIds, setIgnoredRequestIds] = useState<Set<string>>(
-    new Set(),
+  const [inbox, setInbox] = useState<{
+    userId: string | null;
+    state: InboxState;
+  }>({ userId: null, state: {} });
+  const inboxRef = useRef(inbox);
+  const inboxReady = inbox.userId === userId;
+  const inboxState = useMemo(
+    () => (inboxReady ? inbox.state : {}),
+    [inbox, inboxReady],
+  );
+  const storageKey = userId ? `qchat:join-inbox:${userId}` : null;
+  useEffect(() => {
+    const read = () => {
+      try {
+        return pruneInbox(
+          JSON.parse(localStorage.getItem(storageKey!) ?? "{}"),
+          Date.now(),
+        );
+      } catch {
+        return {};
+      }
+    };
+    const restore = () => {
+      const state = storageKey ? read() : {};
+      inboxRef.current = { userId, state };
+      setInbox(inboxRef.current);
+    };
+    restore();
+    const prune = window.setInterval(() => {
+      const state = pruneInbox(inboxRef.current.state, Date.now());
+      inboxRef.current = { userId, state };
+      setInbox(inboxRef.current);
+      try {
+        if (storageKey) localStorage.setItem(storageKey, JSON.stringify(state));
+      } catch {}
+    }, 30_000);
+    const sync = (event: StorageEvent) => {
+      if (event.key === storageKey || event.key === null) restore();
+    };
+    window.addEventListener("storage", sync);
+    return () => {
+      window.clearInterval(prune);
+      window.removeEventListener("storage", sync);
+    };
+  }, [storageKey, userId]);
+  const updateInbox = useCallback(
+    (event: RoomActivity, field: "seen" | "ignored") => {
+      const current = inboxRef.current;
+      if (current.userId !== userId) return;
+      let stored: InboxState = {};
+      try {
+        stored = pruneInbox(
+          JSON.parse(localStorage.getItem(storageKey!) ?? "{}"),
+          Date.now(),
+        );
+      } catch {}
+      const key = requestKey(event);
+      const state = pruneInbox(
+        {
+          ...stored,
+          ...current.state,
+          [key]: {
+            ...stored[key],
+            ...current.state[key],
+            expiresAt: Date.parse(event.expiresAt ?? event.createdAt),
+            [field]: true,
+          },
+        },
+        Date.now(),
+      );
+      try {
+        if (storageKey) localStorage.setItem(storageKey, JSON.stringify(state));
+      } catch {
+        /* In-memory state remains available. */
+      }
+      inboxRef.current = { userId, state };
+      setInbox(inboxRef.current);
+    },
+    [storageKey, userId],
+  );
+  const ignoredRequestIds = useMemo(
+    () =>
+      new Set(
+        Object.entries(inboxState)
+          .filter(([, value]) => value.ignored)
+          .map(([key]) => key),
+      ),
+    [inboxState],
   );
   const [clock, setClock] = useState(0);
 
@@ -136,7 +231,6 @@ export function RoomActivityProvider({
       return next;
     });
     if (live && event.type !== "join.requested") {
-      setUnreadIds((current) => new Set(current).add(key));
       window.dispatchEvent(new Event("qchat:membership-changed"));
     }
   }, []);
@@ -149,8 +243,6 @@ export function RoomActivityProvider({
 
   useEffect(() => {
     setEvents(new Map());
-    setUnreadIds(new Set());
-    setIgnoredRequestIds(new Set());
   }, [realtimeClient, userId]);
 
   const activities = useMemo(
@@ -161,38 +253,17 @@ export function RoomActivityProvider({
     [clock, events],
   );
 
-  const pendingRequests = useMemo(() => {
-    const resolved = new Set(
-      activities
-        .filter(
-          (event) =>
-            event.type === "join.approved" || event.type === "join.rejected",
-        )
-        .map((event) => event.request?.id ?? event.id),
-    );
-    const seenRequesters = new Set<string>();
-    return activities.filter((event) => {
-      if (
-        event.type !== "join.requested" ||
-        !event.request ||
-        resolved.has(event.request.id) ||
-        ignoredRequestIds.has(event.request.id) ||
-        Date.parse(event.expiresAt ?? event.createdAt) <= clock
-      )
-        return false;
-      const requesterKey = `${event.room.id}:${event.actor.id}`;
-      if (seenRequesters.has(requesterKey)) return false;
-      seenRequesters.add(requesterKey);
-      return true;
-    });
-  }, [activities, clock, ignoredRequestIds]);
-
   const canDecide = useCallback(
     (roomId: string) => {
       const room = rooms.find((candidate) => candidate.id === roomId);
       return room ? canModerateRequests(room.currentUserRole) : false;
     },
     [rooms],
+  );
+
+  const pendingRequests = useMemo(
+    () => pendingJoinRequests(activities, inboxState, clock, canDecide),
+    [activities, inboxState, clock, canDecide],
   );
 
   const decideRequest = useCallback(
@@ -204,7 +275,10 @@ export function RoomActivityProvider({
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ action: decision, ticket: activity.request.ticket }),
+          body: JSON.stringify({
+            action: decision,
+            ticket: activity.request.ticket,
+          }),
         },
       );
       const payload = (await response.json().catch(() => null)) as {
@@ -212,27 +286,44 @@ export function RoomActivityProvider({
       } | null;
       if (!response.ok)
         throw new Error(payload?.error ?? "Unable to update request.");
+      addEvent(
+        {
+          ...activity,
+          type: decision === "approve" ? "join.approved" : "join.rejected",
+        },
+        true,
+      );
     },
-    [],
+    [addEvent],
   );
 
   const value = useMemo<ActivityContextValue>(
     () => ({
       activities,
       pendingRequests,
-      unreadCount:
-        [...unreadIds].filter((id) =>
-          activities.some((event) => eventKey(event) === id),
-        ).length + pendingRequests.length,
+      inboxReady,
+      isRequestSeen: (event) => Boolean(inboxState[requestKey(event)]?.seen),
+      markRequestSeen: (event) => updateInbox(event, "seen"),
       ignoredRequestIds,
       rooms,
-      markRead: () => setUnreadIds(new Set()),
-      ignoreRequest: (id) =>
-        setIgnoredRequestIds((current) => new Set(current).add(id)),
+      ignoreRequest: (id) => {
+        const event = pendingRequests.find((event) => event.request?.id === id);
+        if (event) updateInbox(event, "ignored");
+      },
       decideRequest,
       canDecide,
     }),
-    [activities, canDecide, decideRequest, ignoredRequestIds, pendingRequests, rooms, unreadIds],
+    [
+      activities,
+      canDecide,
+      decideRequest,
+      ignoredRequestIds,
+      pendingRequests,
+      rooms,
+      inboxReady,
+      inboxState,
+      updateInbox,
+    ],
   );
 
   return (

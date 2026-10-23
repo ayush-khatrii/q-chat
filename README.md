@@ -7,7 +7,7 @@ QChat is a real-time, room-based chat app built with Next.js, Ably Chat, and Pos
 - Google sign-in through Better Auth.
 - Create rooms with generated or custom `QC-` codes and join by code.
 - Up to 50 members per room with realtime admin-approved join requests.
-- Super Admin, Admin, and Member roles with a realtime activity center.
+- Super Admin, Admin, and Member roles with a room-specific admin join-request inbox.
 - Real-time messages, typing indicators, and online presence.
 - Paginated message history, with older messages loaded on scroll or by button.
 - Read receipts with live updates and database persistence.
@@ -41,10 +41,12 @@ QChat is a real-time, room-based chat app built with Next.js, Ably Chat, and Pos
 ## Realtime membership setup
 
 - Set `JOIN_REQUEST_SECRET` to a long random value. When omitted, QChat uses `BETTER_AUTH_SECRET` to sign 15-minute join request tickets.
-- In the Ably dashboard, enable persisted history for `qchat:room:*:activity` and `qchat:user:*:room-events` channels with retention of at least 15 minutes. The application never stores pending requests in PostgreSQL.
+- In the Ably dashboard, enable persisted history for `qchat:room:*:activity`, `qchat:room:*:join-requests`, and `qchat:user:*:room-events` channels with retention of at least 15 minutes. The application never stores pending requests in PostgreSQL.
 - Enable **revocable tokens** for the API key supplied as `ABLY_API_KEY`. Removed members otherwise retain their existing short-lived capability until its 60-second expiry.
 - Firebase credentials and browser permission are optional for membership. They add background alerts; the authoritative request and notification feed always comes from Ably.
 
 ### Release verification
 
 Run `npm test`, `npm run test:ui`, `npx tsc --noEmit`, and `npm run build`. In a deployment with real credentials, verify Google sign-in returns to the invitation, a second account joins only after confirmation, both clients see edits/reactions after reload, installation works on target devices, and background notification clicks still open the right room. Browser fixture tests mock Ably and OAuth; they do not replace this live check.
+
+The bell shows only pending join requests for the open room to its Admins and Super Admin. Seen and ignored requests are remembered per account and room in this browser; Ignore does not affect other admins. Only cards at least half visible in the open panel in a visible tab clear their unread badge. Deploy request publishing, Ably permissions, and the client together; requests pending during the channel transition may need resubmission.

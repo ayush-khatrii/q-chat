@@ -51,3 +51,7 @@ export function isRoomActivity(value: unknown): value is RoomActivity {
     event.createdAt,
   );
 }
+
+export function roomJoinRequestChannel(roomId: string) {
+  return `qchat:room:${roomId}:join-requests`;
+}

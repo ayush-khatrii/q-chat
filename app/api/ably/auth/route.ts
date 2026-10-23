@@ -3,8 +3,13 @@ import { NextResponse } from "next/server";
 import { headers } from "next/headers";
 import { auth } from "@/lib/auth";
 import prisma from "@/lib/prisma";
+import { canModerateRequests, effectiveRoomRole } from "@/lib/permissions";
 import { readReceiptChannel } from "@/lib/read-receipts";
-import { roomActivityChannel, userActivityChannel } from "@/lib/room-activity";
+import {
+  roomActivityChannel,
+  roomJoinRequestChannel,
+  userActivityChannel,
+} from "@/lib/room-activity";
 
 export async function GET() {
   try {
@@ -27,7 +32,11 @@ export async function GET() {
     const client = new Ably.Rest(apiKey);
     const memberships = await prisma.roomMember.findMany({
       where: { userId: session.user.id },
-      select: { roomId: true, room: { select: { code: true } } },
+      select: {
+        roomId: true,
+        role: true,
+        room: { select: { code: true, ownerId: true } },
+      },
     });
 
     const tokenRequestData = await client.auth.createTokenRequest({
@@ -61,6 +70,18 @@ export async function GET() {
             roomActivityChannel(roomId),
             ["subscribe", "history"],
           ]),
+        ),
+        ...Object.fromEntries(
+          memberships
+            .filter(({ role, room }) =>
+              canModerateRequests(
+                effectiveRoomRole(room.ownerId, session.user.id, role),
+              ),
+            )
+            .map(({ roomId }) => [
+              roomJoinRequestChannel(roomId),
+              ["subscribe", "history"],
+            ]),
         ),
         [userActivityChannel(session.user.id)]: ["subscribe", "history"],
       }),

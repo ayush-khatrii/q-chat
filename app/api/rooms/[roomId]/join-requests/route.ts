@@ -167,6 +167,16 @@ export async function POST(
   });
   await publishRoomActivity(activity, [claims.userId]);
   await sendActivityPush([claims.userId], activity);
+  if (body.data.action === "approve") {
+    await publishRoomActivity(
+      createRoomActivity({
+        type: "member.joined",
+        room: activity.room,
+        actor: subject,
+        subjectRole: "MEMBER",
+      }),
+    );
+  }
 
   return NextResponse.json({
     action: body.data.action === "approve" ? "approved" : "rejected",

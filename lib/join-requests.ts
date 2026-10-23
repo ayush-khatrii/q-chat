@@ -5,6 +5,7 @@ import * as Ably from "ably";
 import {
   JOIN_REQUEST_TTL_MS,
   roomActivityChannel,
+  roomJoinRequestChannel,
   userActivityChannel,
   type ActivityUser,
   type RoomActivity,
@@ -92,7 +93,9 @@ export async function publishRoomActivity(
 ) {
   const client = ablyRest();
   const channels = [
-    roomActivityChannel(activity.room.id),
+    activity.type.startsWith("join.")
+      ? roomJoinRequestChannel(activity.room.id)
+      : roomActivityChannel(activity.room.id),
     ...recipientIds.map(userActivityChannel),
   ];
   await Promise.all(
@@ -108,7 +111,7 @@ export async function getJoinRequestResolution(
   createdAt: number,
 ) {
   const page = await ablyRest()
-    .channels.get(roomActivityChannel(roomId))
+    .channels.get(roomJoinRequestChannel(roomId))
     .history({ start: createdAt, direction: "backwards", limit: 200 });
   const match = page.items.find((message) => {
     const data = message.data as Partial<RoomActivity> | undefined;

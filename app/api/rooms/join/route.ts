@@ -9,6 +9,7 @@ import {
   createRoomActivity,
   publishRoomActivity,
 } from "@/lib/join-requests";
+import { canModerateRequests, effectiveRoomRole } from "@/lib/permissions";
 import { sendActivityPush } from "@/lib/activity-push";
 
 export async function POST(request: Request) {
@@ -33,7 +34,8 @@ export async function POST(request: Request) {
       id: true,
       code: true,
       name: true,
-      roomMembers: { select: { userId: true } },
+      ownerId: true,
+      roomMembers: { select: { userId: true, role: true } },
     },
   });
   if (!room) {
@@ -70,7 +72,13 @@ export async function POST(request: Request) {
   });
   await publishRoomActivity(activity);
   await sendActivityPush(
-    room.roomMembers.map((member) => member.userId),
+    room.roomMembers
+      .filter((member) =>
+        canModerateRequests(
+          effectiveRoomRole(room.ownerId, member.userId, member.role),
+        ),
+      )
+      .map((member) => member.userId),
     activity,
   );
 

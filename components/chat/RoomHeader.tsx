@@ -73,7 +73,6 @@ import { MAX_CUSTOM_ROOM_CODE_LENGTH } from "@/lib/rooms";
 
 import { InstallApp } from "@/components/pwa/InstallApp";
 import NotificationCenter from "@/components/NotificationCenter";
-import { useRoomActivity } from "@/components/room-activity-context";
 import {
   canChangeRole,
   canEditRoom,
@@ -153,7 +152,6 @@ export default function RoomHeader({ room, members }: RoomHeaderProps) {
     member: UserRoomMember;
     role: PersistedRoomRole;
   } | null>(null);
-  const activity = useRoomActivity();
 
   const currentRoom = room;
   const hasActiveRoom = true;
@@ -370,23 +368,6 @@ export default function RoomHeader({ room, members }: RoomHeaderProps) {
     }
   };
 
-  const handleRequestDecision = async (
-    request: NonNullable<typeof activity>["pendingRequests"][number],
-    decision: "approve" | "reject",
-  ) => {
-    if (!activity) return;
-    setRoomNotice(null);
-    try {
-      await activity.decideRequest(request, decision);
-    } catch (error) {
-      setRoomNotice(
-        error instanceof Error
-          ? error.message
-          : "Unable to update this request.",
-      );
-    }
-  };
-
   return (
     <section className="sticky top-0 z-40 border-b bg-background/95 backdrop-blur">
       <div className="mx-auto flex min-h-14 w-full max-w-5xl items-center gap-1.5 px-2 py-2 sm:min-h-16 sm:gap-2 sm:px-4 lg:px-8">
@@ -425,7 +406,7 @@ export default function RoomHeader({ room, members }: RoomHeaderProps) {
           </div>
         </div>
 
-        {session ? <NotificationCenter /> : null}
+        {session ? <NotificationCenter room={currentRoom} /> : null}
         {session ? <UserDropdown session={session} /> : <GoogleOneTap />}
 
         <Sheet open={menuOpen} onOpenChange={setMenuOpen}>
@@ -610,94 +591,6 @@ export default function RoomHeader({ room, members }: RoomHeaderProps) {
                     </div>
                   </div>
                 </div>
-
-                {activity?.pendingRequests.some(
-                  (request) => request.room.id === currentRoom.id,
-                ) ? (
-                  <div className="rounded-2xl border bg-card p-2.5 shadow-sm">
-                    <div className="flex items-center justify-between px-2 py-1.5">
-                      <p className="text-xs font-semibold">Pending requests</p>
-                      <Badge variant="secondary">
-                        {
-                          activity.pendingRequests.filter(
-                            (request) => request.room.id === currentRoom.id,
-                          ).length
-                        }
-                      </Badge>
-                    </div>
-                    <div className="max-h-48 overflow-y-auto overscroll-contain">
-                      <div className="space-y-2 p-1">
-                        {activity.pendingRequests
-                          .filter(
-                            (request) => request.room.id === currentRoom.id,
-                          )
-                          .map((request) => (
-                            <div
-                              key={request.id}
-                              className="rounded-xl border p-2.5"
-                            >
-                              <div className="flex items-center gap-2">
-                                <Avatar className="size-8 shrink-0">
-                                  <AvatarImage
-                                    src={request.actor.image ?? undefined}
-                                  />
-                                  <AvatarFallback className="text-[10px]">
-                                    {getInitials(request.actor)}
-                                  </AvatarFallback>
-                                </Avatar>
-                                <div className="min-w-0 flex-1">
-                                  <p className="truncate text-xs font-medium">
-                                    {request.actor.name ?? request.actor.email}
-                                  </p>
-                                  <p className="text-[10px] text-muted-foreground">
-                                    Waiting for approval
-                                  </p>
-                                </div>
-                              </div>
-                              {activity.canDecide(currentRoom.id) ? (
-                                <div className="mt-2 grid grid-cols-3 gap-1.5">
-                                  <Button
-                                    size="sm"
-                                    onClick={() =>
-                                      void handleRequestDecision(
-                                        request,
-                                        "approve",
-                                      )
-                                    }
-                                  >
-                                    Approve
-                                  </Button>
-                                  <Button
-                                    size="sm"
-                                    variant="outline"
-                                    onClick={() =>
-                                      activity.ignoreRequest(
-                                        request.request?.id ?? request.id,
-                                      )
-                                    }
-                                  >
-                                    Ignore
-                                  </Button>
-                                  <Button
-                                    size="sm"
-                                    variant="destructive"
-                                    onClick={() =>
-                                      void handleRequestDecision(
-                                        request,
-                                        "reject",
-                                      )
-                                    }
-                                  >
-                                    Reject
-                                  </Button>
-                                </div>
-                              ) : null}
-                            </div>
-                          ))}
-                      </div>
-                    </div>
-                  </div>
-                ) : null}
 
                 <MenuSection icon={Folder} title="Workspace">
                   <div className="mx-1 mb-1 flex items-center gap-2 rounded-xl border bg-muted/30 px-3 py-2.5">

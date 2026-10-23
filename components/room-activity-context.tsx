@@ -41,62 +41,40 @@ function eventKey(event: RoomActivity) {
   return `${event.id}:${event.type}`;
 }
 
-export function RoomActivityProvider({
-  client,
+function RoomActivitySubscription({
+  realtimeClient,
   userId,
-  children,
+  rooms,
+  addEvent,
 }: {
-  client: Ably.Realtime;
-  userId: string;
-  children: ReactNode;
+  realtimeClient: Ably.Realtime | null;
+  userId: string | null;
+  rooms: UserRoom[];
+  addEvent: (event: RoomActivity, live: boolean) => void;
 }) {
-  const { rooms } = useRooms(true, userId);
-  const [events, setEvents] = useState<Map<string, RoomActivity>>(new Map());
-  const [unreadIds, setUnreadIds] = useState<Set<string>>(new Set());
-  const [ignoredRequestIds, setIgnoredRequestIds] = useState<Set<string>>(
-    new Set(),
-  );
-  const [clock, setClock] = useState(() => Date.now());
   const liveReady = useRef(false);
 
-  const addEvent = useCallback((event: RoomActivity, live: boolean) => {
-    const key = eventKey(event);
-    setEvents((current) => {
-      if (current.has(key)) return current;
-      const next = new Map(current);
-      next.set(key, event);
-      return next;
-    });
-    if (live && event.type !== "join.requested") {
-      setUnreadIds((current) => new Set(current).add(key));
-      window.dispatchEvent(new Event("qchat:membership-changed"));
-    }
-  }, []);
-
   useEffect(() => {
-    const timer = window.setInterval(() => setClock(Date.now()), 30_000);
-    return () => window.clearInterval(timer);
-  }, []);
+    liveReady.current = false;
+    if (!realtimeClient || !userId) return;
 
-  useEffect(() => {
     const channelNames = [
       userActivityChannel(userId),
       ...rooms.map((room) => roomActivityChannel(room.id)),
     ];
     const channels = [...new Set(channelNames)].map((name) =>
-      client.channels.get(name),
+      realtimeClient.channels.get(name),
     );
     const listener = (message: Ably.Message) => {
-      if (isRoomActivity(message.data)) {
-        addEvent(message.data, liveReady.current);
-        if (
-          liveReady.current &&
-          (message.data.type === "room.deleted" ||
-            (message.data.type === "member.removed" &&
-              message.data.subject?.id === userId))
-        ) {
-          window.location.assign("/chat");
-        }
+      if (!isRoomActivity(message.data)) return;
+      addEvent(message.data, liveReady.current);
+      if (
+        liveReady.current &&
+        (message.data.type === "room.deleted" ||
+          (message.data.type === "member.removed" &&
+            message.data.subject?.id === userId))
+      ) {
+        window.location.assign("/chat");
       }
     };
 
@@ -127,7 +105,52 @@ export function RoomActivityProvider({
       cancelled = true;
       for (const channel of channels) channel.unsubscribe(listener);
     };
-  }, [addEvent, client, rooms, userId]);
+  }, [addEvent, realtimeClient, rooms, userId]);
+
+  return null;
+}
+
+export function RoomActivityProvider({
+  realtimeClient,
+  userId,
+  children,
+}: {
+  realtimeClient: Ably.Realtime | null;
+  userId: string | null;
+  children: ReactNode;
+}) {
+  const { rooms } = useRooms(Boolean(userId), userId);
+  const [events, setEvents] = useState<Map<string, RoomActivity>>(new Map());
+  const [unreadIds, setUnreadIds] = useState<Set<string>>(new Set());
+  const [ignoredRequestIds, setIgnoredRequestIds] = useState<Set<string>>(
+    new Set(),
+  );
+  const [clock, setClock] = useState(() => Date.now());
+
+  const addEvent = useCallback((event: RoomActivity, live: boolean) => {
+    const key = eventKey(event);
+    setEvents((current) => {
+      if (current.has(key)) return current;
+      const next = new Map(current);
+      next.set(key, event);
+      return next;
+    });
+    if (live && event.type !== "join.requested") {
+      setUnreadIds((current) => new Set(current).add(key));
+      window.dispatchEvent(new Event("qchat:membership-changed"));
+    }
+  }, []);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setClock(Date.now()), 30_000);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
+    setEvents(new Map());
+    setUnreadIds(new Set());
+    setIgnoredRequestIds(new Set());
+  }, [realtimeClient, userId]);
 
   const activities = useMemo(
     () =>
@@ -146,7 +169,6 @@ export function RoomActivityProvider({
         )
         .map((event) => event.request?.id ?? event.id),
     );
-    const now = clock;
     const seenRequesters = new Set<string>();
     return activities.filter((event) => {
       if (
@@ -154,7 +176,7 @@ export function RoomActivityProvider({
         !event.request ||
         resolved.has(event.request.id) ||
         ignoredRequestIds.has(event.request.id) ||
-        Date.parse(event.expiresAt ?? event.createdAt) <= now
+        Date.parse(event.expiresAt ?? event.createdAt) <= clock
       )
         return false;
       const requesterKey = `${event.room.id}:${event.actor.id}`;
@@ -181,10 +203,7 @@ export function RoomActivityProvider({
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            action: decision,
-            ticket: activity.request.ticket,
-          }),
+          body: JSON.stringify({ action: decision, ticket: activity.request.ticket }),
         },
       );
       const payload = (await response.json().catch(() => null)) as {
@@ -212,19 +231,17 @@ export function RoomActivityProvider({
       decideRequest,
       canDecide,
     }),
-    [
-      activities,
-      canDecide,
-      decideRequest,
-      ignoredRequestIds,
-      pendingRequests,
-      rooms,
-      unreadIds.size,
-    ],
+    [activities, canDecide, decideRequest, ignoredRequestIds, pendingRequests, rooms, unreadIds],
   );
 
   return (
     <ActivityContext.Provider value={value}>
+      <RoomActivitySubscription
+        realtimeClient={realtimeClient}
+        userId={userId}
+        rooms={rooms}
+        addEvent={addEvent}
+      />
       {children}
     </ActivityContext.Provider>
   );

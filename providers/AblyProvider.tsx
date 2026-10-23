@@ -1,88 +1,58 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { createContext, useContext, useEffect, useState } from "react";
+import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import * as Ably from "ably";
-import { AblyProvider as RealtimeProvider } from "ably/react";
 import { ChatClient, LogLevel } from "@ably/chat";
-import { ChatClientProvider } from "@ably/chat/react";
 import { authClient } from "@/lib/auth-client";
 import { RoomActivityProvider } from "@/components/room-activity-context";
 
-type AppAblyProviderProps = {
-  children: ReactNode;
+type AblyClients = {
+  userId: string;
+  realtimeClient: Ably.Realtime;
+  chatClient: ChatClient;
 };
 
-const AblyReadyContext = createContext(false);
+type AblyConnection = AblyClients & {
+  ready: true;
+};
+
+const AblyConnectionContext = createContext<AblyConnection | null>(null);
+
+export function useAblyConnection() {
+  return useContext(AblyConnectionContext);
+}
 
 export function useAblyReady() {
-  return useContext(AblyReadyContext);
+  return useAblyConnection() !== null;
 }
 
-// 1. The Main Gatekeeper Provider
-export default function AppAblyProvider({ children }: AppAblyProviderProps) {
-  return <SessionAwareAblyProvider>{children}</SessionAwareAblyProvider>;
-}
-
-function SessionAwareAblyProvider({ children }: { children: ReactNode }) {
+export default function AppAblyProvider({ children }: { children: ReactNode }) {
   const { data: session } = authClient.useSession();
-  if (!session?.user.id) {
-    return <AblyReadyContext.Provider value={false}>{children}</AblyReadyContext.Provider>;
-  }
-  return <AblyConnectedProvider userId={session.user.id}>{children}</AblyConnectedProvider>;
-}
-
-// 2. The Clean Realtime Client Initializer
-function AblyConnectedProvider({
-  children,
-  userId,
-}: {
-  children: ReactNode;
-  userId?: string;
-}) {
-  const [clients, setClients] = useState<{
-    realtimeClient: Ably.Realtime;
-    chatClient: ChatClient;
-  } | null>(null);
+  const userId = session?.user.id ?? null;
+  const [clients, setClients] = useState<AblyClients | null>(null);
 
   useEffect(() => {
-    const realtime = new Ably.Realtime({
-      authUrl: "/api/ably/auth",
-    });
+    setClients(null);
+    if (!userId) return;
 
-    const chat = new ChatClient(realtime, {
+    const realtimeClient = new Ably.Realtime({ authUrl: "/api/ably/auth" });
+    const chatClient = new ChatClient(realtimeClient, {
       logLevel: LogLevel.Info,
       idempotentRestPublishing: true,
     });
+    setClients({ userId, realtimeClient, chatClient });
 
-    setClients({ realtimeClient: realtime, chatClient: chat });
     return () => {
-      void chat.dispose().finally(() => realtime.close());
+      void chatClient.dispose().finally(() => realtimeClient.close());
     };
-  }, []);
+  }, [userId]);
 
-  if (!clients) {
-    return <AblyReadyContext.Provider value={false}>{children}</AblyReadyContext.Provider>;
-  }
-
-  return <ConnectedClients clients={clients} userId={userId}>{children}</ConnectedClients>;
-}
-
-function ConnectedClients({
-  clients: { realtimeClient, chatClient },
-  children,
-  userId,
-}: {
-  clients: { realtimeClient: Ably.Realtime; chatClient: ChatClient };
-  children: ReactNode;
-  userId?: string;
-}) {
   useEffect(() => {
+    if (!clients) return;
     const refresh = () => {
-      void realtimeClient.auth.authorize().catch(() => {});
+      void clients.realtimeClient.auth.authorize().catch(() => {});
     };
-    // Server checks membership on every refresh. A removed member's old token
-    // expires within one minute; attachment URLs require membership immediately.
     const interval = window.setInterval(refresh, 45_000);
     window.addEventListener("qchat:membership-changed", refresh);
     window.addEventListener("focus", refresh);
@@ -91,21 +61,24 @@ function ConnectedClients({
       window.removeEventListener("qchat:membership-changed", refresh);
       window.removeEventListener("focus", refresh);
     };
-  }, [realtimeClient]);
+  }, [clients]);
+
+  const connection = useMemo<AblyConnection | null>(
+    () =>
+      clients?.userId === userId
+        ? { ...clients, ready: true }
+        : null,
+    [clients, userId],
+  );
 
   return (
-    <RealtimeProvider client={realtimeClient}>
-      <ChatClientProvider client={chatClient}>
-        <AblyReadyContext.Provider value={true}>
-          {userId ? (
-            <RoomActivityProvider client={realtimeClient} userId={userId}>
-              {children}
-            </RoomActivityProvider>
-          ) : (
-            children
-          )}
-        </AblyReadyContext.Provider>
-      </ChatClientProvider>
-    </RealtimeProvider>
+    <AblyConnectionContext.Provider value={connection}>
+      <RoomActivityProvider
+        realtimeClient={connection?.realtimeClient ?? null}
+        userId={userId}
+      >
+        {children}
+      </RoomActivityProvider>
+    </AblyConnectionContext.Provider>
   );
 }

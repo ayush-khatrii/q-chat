@@ -441,6 +441,12 @@ export default function RoomHeader({ room, members }: RoomHeaderProps) {
           </SheetTrigger>
           <SheetContent
             side="right"
+            onOpenAutoFocus={(event) => {
+              event.preventDefault();
+              (event.currentTarget as HTMLElement | null)
+                ?.querySelector<HTMLButtonElement>('[data-slot="sheet-close"]')
+                ?.focus();
+            }}
             className="min-w-0 max-w-full overflow-hidden border-l bg-background p-0 data-[side=right]:h-dvh data-[side=right]:w-[min(100vw,400px)] data-[side=right]:sm:max-w-[400px] [&>[data-slot=sheet-close]]:size-11"
           >
             <div className="flex shrink-0 items-center gap-3 border-b bg-gradient-to-br from-primary/10 via-background to-background pl-4 pr-16 pb-4 pt-[max(1rem,env(safe-area-inset-top))]">

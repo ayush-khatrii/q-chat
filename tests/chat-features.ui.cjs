@@ -51,8 +51,8 @@ async function fixture() {
   };
   const result = await build({
     stdin: {
-      contents: `import React from 'react'; import {createRoot} from 'react-dom/client'; import Chat from './components/Chat'; import {ChatOutboxProvider} from './components/chat/outbox-context'; import {TooltipProvider} from './components/ui/tooltip';
-      createRoot(document.getElementById('root')).render(<TooltipProvider><ChatOutboxProvider><div className="flex h-dvh flex-col"><Chat roomId="room" roomCode="CODE" members={[]} initialTheme={{}} /></div></ChatOutboxProvider></TooltipProvider>);`,
+      contents: `import React from 'react'; import {QueryClient,QueryClientProvider} from '@tanstack/react-query'; import {createRoot} from 'react-dom/client'; import Chat from './components/Chat'; import {ChatOutboxProvider} from './components/chat/outbox-context'; import {TooltipProvider} from './components/ui/tooltip';
+      createRoot(document.getElementById('root')).render(<QueryClientProvider client={new QueryClient()}><TooltipProvider><ChatOutboxProvider><div className="flex h-dvh flex-col"><Chat roomId="room" roomCode="CODE" members={[]} initialTheme={{}} /></div></ChatOutboxProvider></TooltipProvider></QueryClientProvider>);`,
       resolveDir: process.cwd(),
       loader: 'tsx',
     },
@@ -303,5 +303,43 @@ test('browser: reply selection sends Ably reply metadata and links back to the p
   } finally {
     await browser.close();
     await new Promise((resolve) => server.close(resolve));
+  }
+});
+
+test('browser: code whitespace survives pending, send, edit and copy', { timeout: 60000 }, async () => {
+  const { server, url } = await fixture();
+  const browser = await chromium.launch({ headless: true });
+  const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
+  try {
+    await page.goto(url);
+    await page.evaluate(() => {
+      window.__delaySend = true;
+      Object.defineProperty(navigator, 'clipboard', { value: { writeText: async(text) => { window.__copied = text; } } });
+    });
+    const source = '  function demo() {\n    return 1;\n  }\n';
+    await page.locator('textarea').first().fill(source);
+    await page.getByRole('button', { name: 'Send message' }).click();
+    const pending = page.locator('[data-pending-message] pre code');
+    await pending.waitFor();
+    assert.equal(await pending.textContent(), source);
+    await page.waitForFunction(() => !!window.__releaseSend);
+    assert.equal(await page.evaluate(() => window.__sendParams.text), source);
+    await page.evaluate(() => window.__releaseSend());
+    const message = page.locator('[data-message-serial="003"]');
+    await message.locator('pre').waitFor();
+    assert.equal(await message.locator('pre code').textContent(), source);
+    await message.getByRole('button', { name: 'Copy code', exact: true }).click();
+    assert.equal(await page.evaluate(() => window.__copied), source);
+    await message.locator('pre').click({ button: 'right' });
+    await page.getByRole('menuitem', { name: 'Edit', exact: true }).click();
+    assert.equal(await page.getByRole('textbox', { name: 'Edit message text' }).inputValue(), source);
+    const edited = source.replace('return 1;', 'return 2;');
+    await page.getByRole('textbox', { name: 'Edit message text' }).fill(edited);
+    await page.getByRole('button', { name: 'Save changes' }).click();
+    await page.waitForFunction(() => !!window.__params);
+    assert.equal(await page.evaluate(() => window.__params.text), edited);
+  } finally {
+    await browser.close();
+    await new Promise(resolve => server.close(resolve));
   }
 });

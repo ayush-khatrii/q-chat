@@ -1,5 +1,7 @@
 "use client";
 
+import { MessageBody } from "./MessageBody";
+
 import { useEffect } from "react";
 import { MessageAttachments } from "@/components/chat/MessageAttachments";
 import Link from "next/link";
@@ -214,7 +216,7 @@ export function ChatBubbleMessage({
               </span>
             </button>
           )}
-          {message.text && <span>{message.text}</span>}
+          {message.text && <MessageBody text={message.text} />}
           <MessageAttachments
             roomId={roomId}
             serial={message.serial}

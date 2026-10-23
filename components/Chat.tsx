@@ -542,7 +542,7 @@ export default function Chat({
       const updated = await updateMessage(
         latest.serial,
         {
-          text: editText.trim(),
+          text: editText,
           metadata: latest.metadata,
           headers: latest.headers,
         },
@@ -701,9 +701,9 @@ export default function Chat({
   const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
-    const text = draft.trim();
+    const text = draft;
 
-    if ((!text && !uploads.files.length) || !uploads.ready || !currentUser) return;
+    if ((!text.trim() && !uploads.files.length) || !uploads.ready || !currentUser) return;
     if (
       uploads.files.some(
         (file) => file.expiresAt && Date.parse(file.expiresAt) <= Date.now(),
@@ -779,7 +779,7 @@ export default function Chat({
                 disabled={
                   savingEdit ||
                   !editText.trim() ||
-                  editText.trim() === editing?.text
+                  editText === editing?.text
                 }
               >
                 {savingEdit ? "Saving…" : "Save changes"}

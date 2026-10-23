@@ -125,7 +125,7 @@ export function RoomActivityProvider({
   const [ignoredRequestIds, setIgnoredRequestIds] = useState<Set<string>>(
     new Set(),
   );
-  const [clock, setClock] = useState(() => Date.now());
+  const [clock, setClock] = useState(0);
 
   const addEvent = useCallback((event: RoomActivity, live: boolean) => {
     const key = eventKey(event);
@@ -142,6 +142,7 @@ export function RoomActivityProvider({
   }, []);
 
   useEffect(() => {
+    setClock(Date.now());
     const timer = window.setInterval(() => setClock(Date.now()), 30_000);
     return () => window.clearInterval(timer);
   }, []);

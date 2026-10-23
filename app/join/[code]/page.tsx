@@ -1,3 +1,4 @@
+import AccountNavigation from "@/components/AccountNavigation";
 import { Suspense } from "react";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
@@ -20,7 +21,11 @@ export default function InvitePage({
   return (
     <Suspense
       fallback={
-        <div className="mx-auto mt-16 w-full max-w-md space-y-4 rounded-2xl border p-6" aria-busy="true" aria-label="Loading invitation">
+        <div
+          className="mx-auto mt-16 w-full max-w-md space-y-4 rounded-2xl border p-6"
+          aria-busy="true"
+          aria-label="Loading invitation"
+        >
           <div className="mx-auto size-12 animate-pulse rounded-full bg-muted" />
           <div className="mx-auto h-5 w-40 animate-pulse rounded bg-muted" />
           <div className="mx-auto h-4 w-64 max-w-full animate-pulse rounded bg-muted/70" />
@@ -37,5 +42,10 @@ async function Invitation({ params }: { params: Promise<{ code: string }> }) {
   const session = await auth.api.getSession({ headers: await headers() });
   if (code && session?.user && (await getRoomForMember(code, session.user.id)))
     redirect(`/chat/${code}`);
-  return <InviteJoin code={code} />;
+  return (
+    <>
+      <AccountNavigation />
+      <InviteJoin code={code} />
+    </>
+  );
 }

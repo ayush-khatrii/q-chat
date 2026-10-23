@@ -1,3 +1,4 @@
+import AccountNavigation from "@/components/AccountNavigation";
 import type { ReactNode } from "react";
 import NotificationInit from "@/components/NotificationInit";
 import SidebarLayout from "@/components/SidebarLayout";
@@ -14,6 +15,7 @@ export default function AuthenticatedLayout({
       <SidebarProvider>
         <NotificationInit />
         <main className="flex h-dvh flex-col">
+          <AccountNavigation />
           <SidebarLayout>{children}</SidebarLayout>
         </main>
       </SidebarProvider>

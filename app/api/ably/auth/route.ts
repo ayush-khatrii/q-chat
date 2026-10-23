@@ -1,3 +1,4 @@
+import { privateInbox } from "@/lib/whispers";
 import * as Ably from "ably";
 import { NextResponse } from "next/server";
 import { headers } from "next/headers";
@@ -83,6 +84,11 @@ export async function GET() {
               ["subscribe", "history"],
             ]),
         ),
+        [`${privateInbox(session.user.id)}::$chat`]: [
+          "subscribe",
+          "history",
+          "channel-metadata",
+        ],
         [userActivityChannel(session.user.id)]: ["subscribe", "history"],
       }),
     });

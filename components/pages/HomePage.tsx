@@ -1,5 +1,6 @@
 "use client";
 
+import AccountNavigation from "@/components/AccountNavigation";
 import { InstallApp } from "@/components/pwa/InstallApp";
 
 import { useState } from "react";
@@ -92,6 +93,7 @@ export default function HomePage() {
 
   return (
     <>
+      <AccountNavigation />
       <main className="py-20 relative flex min-h-screen items-center justify-center overflow-hidden px-5">
         <div className="absolute left-1/2 top-1/2 h-[500px] w-[500px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-primary/10 blur-[120px]" />
         <section className="relative z-10 mx-auto flex max-w-5xl flex-col items-center text-center">

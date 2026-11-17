@@ -5,7 +5,6 @@ import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import * as Ably from "ably";
 import { ChatClient, LogLevel } from "@ably/chat";
 import { authClient } from "@/lib/auth-client";
-import { WhisperProvider } from "@/components/whisper-context";
 import { RoomActivityProvider } from "@/components/room-activity-context";
 
 type AblyClients = {
@@ -75,13 +74,7 @@ export default function AppAblyProvider({ children }: { children: ReactNode }) {
         realtimeClient={connection?.realtimeClient ?? null}
         userId={userId}
       >
-        <WhisperProvider
-          userId={userId}
-          chatClient={connection?.chatClient ?? null}
-          realtimeClient={connection?.realtimeClient ?? null}
-        >
-          {children}
-        </WhisperProvider>
+        {children}
       </RoomActivityProvider>
     </AblyConnectionContext.Provider>
   );

@@ -3,7 +3,6 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { MessageCircle } from "lucide-react";
 import { authClient } from "@/lib/auth-client";
-import NotificationCenter from "@/components/NotificationCenter";
 import UserDropdown from "@/components/auth/UserDropdown";
 
 export default function AccountNavigation() {
@@ -24,7 +23,6 @@ export default function AccountNavigation() {
           QChat
         </Link>
         <div className="flex items-center gap-2">
-          <NotificationCenter />
           <UserDropdown session={session} />
         </div>
       </div>

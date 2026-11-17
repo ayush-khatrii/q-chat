@@ -8,7 +8,6 @@ import {
   useRef,
   useState,
 } from "react";
-import { WhisperDialog } from "@/components/chat/WhisperDialog";
 import { Paperclip, Send, X } from "lucide-react";
 import { toast } from "sonner";
 
@@ -976,7 +975,6 @@ export default function Chat({
             }}
           />
           <div className="mx-auto flex w-full max-w-5xl min-w-0 items-end gap-2">
-            <WhisperDialog roomId={roomId} members={members} />
             <Button
               type="button"
               variant="ghost"

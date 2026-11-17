@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import { useInView } from "react-intersection-observer";
-import { Bell, Check, Clock, X, ShieldCheck, Loader2 } from "lucide-react";
+import { Bell, Check, Clock, X } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import {
@@ -12,17 +12,13 @@ import {
   SheetDescription,
   SheetTrigger,
 } from "@/components/ui/sheet";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { useRoomActivity } from "@/components/room-activity-context";
-import { useWhispers } from "@/components/whisper-context";
-import { PrivateSpace } from "@/components/PrivateSpace";
 import type { RoomActivity } from "@/lib/room-activity";
 import type { UserRoom } from "@/lib/rooms";
 import { canModerateRequests } from "@/lib/permissions";
 
 export default function NotificationCenter({ room }: { room?: UserRoom }) {
   const activity = useRoomActivity();
-  const inbox = useWhispers();
   const [open, setOpen] = useState(false);
   const [viewport, setViewport] = useState<HTMLDivElement | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -44,11 +40,6 @@ export default function NotificationCenter({ room }: { room?: UserRoom }) {
   const unread = activity?.inboxReady
     ? requests.filter((event) => !activity.isRequestSeen(event)).length
     : 0;
-  const privateUnread = inbox?.ready
-    ? inbox.messages.filter((m) => !inbox.seen[m.id]).length
-    : 0;
-  const selected =
-    moderate && inbox?.tab === "notifications" ? "notifications" : "private";
   const act = async (event: RoomActivity, decision: "approve" | "reject") => {
     if (!activity) return;
     setBusyId(event.id);
@@ -61,20 +52,20 @@ export default function NotificationCenter({ room }: { room?: UserRoom }) {
       setBusyId(null);
     }
   };
+  if (!moderate) return null;
+
   return (
-    <Sheet
-      open={open}
-      onOpenChange={(next) => {
-        if (next && privateUnread > 0) inbox?.setTab("private");
-        setOpen(next);
-      }}
-    >
+    <Sheet open={open} onOpenChange={setOpen}>
       <SheetTrigger asChild>
         <Button
           type="button"
           variant="ghost"
           className="relative h-9 gap-2 px-2"
-          aria-label={`Open notification center, ${unread} unread join requests, ${inbox?.ready ? `${privateUnread} unread whispers` : "whispers loading"}`}
+          aria-label={
+            unread
+              ? `Open join requests, ${unread} unread`
+              : "Open join requests"
+          }
         >
           <span className="relative">
             <Bell className="size-4" />
@@ -82,18 +73,6 @@ export default function NotificationCenter({ room }: { room?: UserRoom }) {
               <span className="absolute -right-2 -top-2 rounded-full bg-red-600 px-1 text-[10px] font-semibold text-white">
                 {unread > 99 ? "99+" : unread}
               </span>
-            )}
-          </span>
-          <span className="flex items-center gap-1 text-violet-700 dark:text-violet-300">
-            <ShieldCheck className="size-4" />
-            {!inbox?.ready ? (
-              <Loader2 className="size-3 animate-spin" aria-hidden="true" />
-            ) : (
-              privateUnread > 0 && (
-                <span className="rounded-full bg-violet-600 px-1.5 text-[10px] font-semibold text-white">
-                  {privateUnread > 99 ? "99+" : privateUnread}
-                </span>
-              )
             )}
           </span>
         </Button>
@@ -105,98 +84,50 @@ export default function NotificationCenter({ room }: { room?: UserRoom }) {
         <SheetHeader className="border-b px-5 py-4 text-left">
           <SheetTitle>Notification center</SheetTitle>
           <SheetDescription>
-            Room requests and your Private Space.
+            Manage requests to join this room.
           </SheetDescription>
         </SheetHeader>
-        <Tabs
-          value={selected}
-          onValueChange={(value) => inbox?.setTab(value)}
-          className="flex min-h-0 flex-1 flex-col"
-        >
-          <TabsList
-            className="mx-4 my-3 shrink-0"
-            aria-label="Notification center tabs"
-          >
-            {moderate && (
-              <TabsTrigger
-                value="notifications"
-                aria-label={`Notifications, ${unread} unread join requests`}
-              >
-                Notifications
-                {unread > 0 && (
-                  <span className="text-red-600 dark:text-red-400">
-                    {unread > 99 ? "99+" : unread}
-                  </span>
-                )}
-              </TabsTrigger>
-            )}
-            <TabsTrigger
-              value="private"
-              aria-label={`Private Space, ${inbox?.ready ? `${privateUnread} unread whispers` : "loading whispers"}`}
-              className="data-[state=active]:bg-violet-600 data-[state=active]:text-white"
+        <div className="flex min-h-0 flex-1 flex-col">
+          <p className="px-4 pb-2 text-xs text-muted-foreground">
+            {room?.name}
+          </p>
+          {error && (
+            <p
+              role="alert"
+              className="mx-4 rounded-lg bg-destructive/10 p-3 text-sm text-destructive"
             >
-              <ShieldCheck className="size-4" />
-              Private Space
-              {privateUnread > 0 && (
-                <span>{privateUnread > 99 ? "99+" : privateUnread}</span>
-              )}
-            </TabsTrigger>
-          </TabsList>
-          <TabsContent value="private" className="flex min-h-0 flex-1 flex-col">
-            <PrivateSpace active={open && selected === "private" && visible} />
-          </TabsContent>
-          {moderate && (
-            <TabsContent
-              value="notifications"
-              className="flex min-h-0 flex-1 flex-col"
-            >
-              <p className="px-4 pb-2 text-xs text-muted-foreground">
-                {room?.name}
-              </p>
-              {error && (
-                <p
-                  role="alert"
-                  className="mx-4 rounded-lg bg-destructive/10 p-3 text-sm text-destructive"
-                >
-                  {error}
-                </p>
-              )}
-              <div
-                ref={setViewport}
-                className="min-h-0 flex-1 space-y-2 overflow-y-auto overscroll-contain p-4"
-              >
-                {!activity?.inboxReady && (
-                  <p role="status" className="text-sm text-muted-foreground">
-                    Loading join requests…
-                  </p>
-                )}
-                {requests.map((event) => (
-                  <RequestCard
-                    key={event.id}
-                    event={event}
-                    root={viewport}
-                    observe={
-                      open &&
-                      selected === "notifications" &&
-                      visible &&
-                      !!activity?.inboxReady
-                    }
-                    seen={activity!.isRequestSeen(event)}
-                    markSeen={activity!.markRequestSeen}
-                    busy={busyId !== null}
-                    act={act}
-                    ignore={() => activity!.ignoreRequest(event.request!.id)}
-                  />
-                ))}
-                {activity?.inboxReady && !requests.length && (
-                  <p className="rounded-xl border border-dashed p-6 text-center text-sm text-muted-foreground">
-                    No pending join requests.
-                  </p>
-                )}
-              </div>
-            </TabsContent>
+              {error}
+            </p>
           )}
-        </Tabs>
+          <div
+            ref={setViewport}
+            className="min-h-0 flex-1 space-y-2 overflow-y-auto overscroll-contain p-4"
+          >
+            {!activity?.inboxReady && (
+              <p role="status" className="text-sm text-muted-foreground">
+                Loading join requests…
+              </p>
+            )}
+            {requests.map((event) => (
+              <RequestCard
+                key={event.id}
+                event={event}
+                root={viewport}
+                observe={open && visible && !!activity?.inboxReady}
+                seen={activity!.isRequestSeen(event)}
+                markSeen={activity!.markRequestSeen}
+                busy={busyId !== null}
+                act={act}
+                ignore={() => activity!.ignoreRequest(event.request!.id)}
+              />
+            ))}
+            {activity?.inboxReady && !requests.length && (
+              <p className="rounded-xl border border-dashed p-6 text-center text-sm text-muted-foreground">
+                No pending join requests.
+              </p>
+            )}
+          </div>
+        </div>
       </SheetContent>
     </Sheet>
   );

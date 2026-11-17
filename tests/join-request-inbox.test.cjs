@@ -226,6 +226,12 @@ test("Ably tokens grant private request channels only for owned and administered
         ]);
         assert.equal(capabilities[roomJoinRequestChannel("member")], undefined);
         assert.ok(capabilities[roomActivityChannel("member")]);
+        assert.equal(
+          Object.keys(capabilities).some((channel) =>
+            channel.startsWith("qchat:private:"),
+          ),
+          false,
+        );
       },
     );
   } finally {
